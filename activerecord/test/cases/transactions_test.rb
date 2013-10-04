@@ -375,6 +375,36 @@ class TransactionTest < ActiveRecord::TestCase
     assert_equal "Three", @three
   end if Topic.connection.supports_savepoints?
 
+  def test_using_named_savepoints
+    Topic.transaction do
+      @first.approved  = true
+      @first.save!
+      Topic.connection.create_savepoint("first")
+
+      @first.approved  = false
+      @first.save!
+      Topic.connection.rollback_to_savepoint("first")
+      assert @first.reload.approved?
+
+      @first.approved  = false
+      @first.save!
+      Topic.connection.release_savepoint("first")
+      assert_not @first.reload.approved?
+    end
+  end if Topic.connection.supports_savepoints?
+
+  def test_releasing_named_savepoints
+    Topic.transaction do
+      Topic.connection.create_savepoint("another")
+      Topic.connection.release_savepoint("another")
+
+      # The savepoint is now gone and we can't remove it again.
+      assert_raises(ActiveRecord::StatementInvalid) do
+        Topic.connection.release_savepoint("another")
+      end
+    end
+  end
+
   def test_rollback_when_commit_raises
     Topic.connection.expects(:begin_db_transaction)
     Topic.connection.expects(:commit_db_transaction).raises('OH NOES')
@@ -540,6 +570,8 @@ if current_adapter?(:PostgreSQLAdapter)
     # This will cause transactions to overlap and fail unless they are performed on
     # separate database connections.
     def test_transaction_per_thread
+      skip "in memory db can't share a db between threads" if in_memory_db?
+
       threads = 3.times.map do
         Thread.new do
           Topic.transaction do

@@ -1,7 +1,6 @@
 module ActiveRecord
   module Associations
     class JoinDependency # :nodoc:
-      autoload :JoinPart,        'active_record/associations/join_dependency/join_part'
       autoload :JoinBase,        'active_record/associations/join_dependency/join_base'
       autoload :JoinAssociation, 'active_record/associations/join_dependency/join_association'
 
@@ -36,7 +35,7 @@ module ActiveRecord
         @reflections   = []
         @alias_tracker = AliasTracker.new(base.connection, joins)
         @alias_tracker.aliased_name_for(base.table_name) # Updates the count for base.table_name to 1
-        build(associations)
+        build(associations, join_parts.last, Arel::InnerJoin)
       end
 
       def graft(*associations)
@@ -124,22 +123,20 @@ module ActiveRecord
           associations.unshift(parent.reflection.name)
           parent = parent.parent
         end
-        ref = @associations
-        associations.each do |key|
-          ref = ref[key]
+        ref = associations.inject(@associations) do |cache,key|
+          cache[key]
         end
         ref[association.reflection.name] ||= {}
       end
 
-      def build(associations, parent = join_parts.last, join_type = Arel::InnerJoin)
+      def build(associations, parent, join_type)
         case associations
         when Symbol, String
           reflection = parent.reflections[associations.intern] or
           raise ConfigurationError, "Association named '#{ associations }' was not found on #{ parent.base_klass.name }; perhaps you misspelled it?"
           unless join_association = find_join_association(reflection, parent)
             @reflections << reflection
-            join_association = build_join_association(reflection, parent)
-            join_association.join_type = join_type
+            join_association = build_join_association(reflection, parent, join_type)
             @join_parts << join_association
             cache_joined_association(join_association)
           end
@@ -149,9 +146,9 @@ module ActiveRecord
             build(association, parent, join_type)
           end
         when Hash
-          associations.keys.sort_by { |a| a.to_s }.each do |name|
-            join_association = build(name, parent, join_type)
-            build(associations[name], join_association, join_type)
+          associations.each do |left, right|
+            join_association = build(left, parent, join_type)
+            build(right, join_association, join_type)
           end
         else
           raise ConfigurationError, associations.inspect
@@ -174,8 +171,14 @@ module ActiveRecord
         end
       end
 
-      def build_join_association(reflection, parent)
-        JoinAssociation.new(reflection, self, parent)
+      def build_join_association(reflection, parent, join_type)
+        reflection.check_validity!
+
+        if reflection.options[:polymorphic]
+          raise EagerLoadPolymorphicError.new(reflection)
+        end
+
+        JoinAssociation.new(reflection, self, parent, join_type)
       end
 
       def construct(parent, associations, join_parts, row)
@@ -216,7 +219,7 @@ module ActiveRecord
         else
           association = join_part.instantiate(row) unless row[join_part.aliased_primary_key].nil?
           case macro
-          when :has_many, :has_and_belongs_to_many
+          when :has_many
             other = record.association(join_part.reflection.name)
             other.loaded!
             other.target.push(association) if association

@@ -45,6 +45,24 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     Client.destroyed_client_ids.clear
   end
 
+  def test_anonymous_has_many
+    developer = Class.new(ActiveRecord::Base) {
+      self.table_name = 'developers'
+      dev = self
+
+      developer_project = Class.new(ActiveRecord::Base) {
+        self.table_name = 'developers_projects'
+        belongs_to :developer, :class => dev
+      }
+      has_many :developer_projects, :class => developer_project, :foreign_key => 'developer_id'
+    }
+    dev = developer.first
+    named = Developer.find(dev.id)
+    assert_operator dev.developer_projects.count, :>, 0
+    assert_equal named.projects.map(&:id).sort,
+                 dev.developer_projects.map(&:project_id).sort
+  end
+
   def test_create_from_association_should_respect_default_scope
     car = Car.create(:name => 'honda')
     assert_equal 'honda', car.name
@@ -60,6 +78,13 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
 
     bulb = car.bulbs.create(:name => 'exotic')
     assert_equal 'exotic', bulb.name
+  end
+
+  def test_build_from_association_should_respect_scope
+    author = Author.new
+
+    post = author.thinking_posts.build
+    assert_equal 'So I was thinking', post.title
   end
 
   def test_create_from_association_with_nil_values_should_work
@@ -253,9 +278,9 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     assert_equal 2, companies(:first_firm).limited_clients.limit(nil).to_a.size
   end
 
-  def test_find_should_prepend_to_association_order
+  def test_find_should_append_to_association_order
     ordered_clients =  companies(:first_firm).clients_sorted_desc.order('companies.id')
-    assert_equal ['companies.id', 'id DESC'], ordered_clients.order_values
+    assert_equal ['id DESC', 'companies.id'], ordered_clients.order_values
   end
 
   def test_dynamic_find_should_respect_association_order
@@ -317,6 +342,18 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     assert_equal client, client_ary.first
 
     assert_raise(ActiveRecord::RecordNotFound) { firm.clients.find(2, 99) }
+  end
+
+  def test_find_ids_and_inverse_of
+    force_signal37_to_load_all_clients_of_firm
+
+    firm = companies(:first_firm)
+    client = firm.clients_of_firm.find(3)
+    assert_kind_of Client, client
+
+    client_ary = firm.clients_of_firm.find([3])
+    assert_kind_of Array, client_ary
+    assert_equal client, client_ary.first
   end
 
   def test_find_all
@@ -497,6 +534,13 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     assert_no_queries do
       firm = Firm.new
       firm.clients_of_firm.concat(Client.new("name" => "Natural Company"))
+    end
+  end
+
+  def test_inverse_on_before_validate
+    firm = companies(:first_firm)
+    assert_queries(1) do
+      firm.clients_of_firm << Client.new("name" => "Natural Company")
     end
   end
 
@@ -1396,15 +1440,17 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     end
   end
 
-  def test_calling_first_or_last_with_integer_on_association_should_load_association
+  def test_calling_first_or_last_with_integer_on_association_should_not_load_association
     firm = companies(:first_firm)
+    firm.clients.create(:name => 'Foo')
+    assert !firm.clients.loaded?
 
-    assert_queries 1 do
+    assert_queries 2 do
       firm.clients.first(2)
       firm.clients.last(2)
     end
 
-    assert firm.clients.loaded?
+    assert !firm.clients.loaded?
   end
 
   def test_calling_many_should_count_instead_of_loading_association
@@ -1588,6 +1634,22 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
     bulb = car.bulbs.build
 
     assert_equal car.id, bulb.attributes_after_initialize['car_id']
+  end
+
+  def test_attributes_are_set_when_initialized_from_has_many_null_relationship
+    car  = Car.new name: 'honda'
+    bulb = car.bulbs.where(name: 'headlight').first_or_initialize
+    assert_equal 'headlight', bulb.name
+  end
+
+  def test_attributes_are_set_when_initialized_from_polymorphic_has_many_null_relationship
+    post    = Post.new title: 'title', body: 'bar'
+    tag     = Tag.create!(name: 'foo')
+
+    tagging = post.taggings.where(tag: tag).first_or_initialize
+
+    assert_equal tag.id, tagging.tag_id
+    assert_equal 'Post', tagging.taggable_type
   end
 
   def test_replace

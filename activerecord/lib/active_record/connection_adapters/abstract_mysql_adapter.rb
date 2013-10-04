@@ -3,6 +3,8 @@ require 'arel/visitors/bind_visitor'
 module ActiveRecord
   module ConnectionAdapters
     class AbstractMysqlAdapter < AbstractAdapter
+      include Savepoints
+
       class SchemaCreation < AbstractAdapter::SchemaCreation
 
         def visit_AddColumn(o)
@@ -174,6 +176,7 @@ module ActiveRecord
         @quoted_column_names, @quoted_table_names = {}, {}
 
         if self.class.type_cast_config_to_boolean(config.fetch(:prepared_statements) { true })
+          @prepared_statements = true
           @visitor = Arel::Visitors::MySQL.new self
         else
           @visitor = unprepared_visitor
@@ -190,11 +193,6 @@ module ActiveRecord
       end
 
       def supports_primary_key?
-        true
-      end
-
-      # Returns true, since this connection adapter supports savepoints.
-      def supports_savepoints?
         true
       end
 
@@ -246,8 +244,8 @@ module ActiveRecord
       # QUOTING ==================================================
 
       def quote(value, column = nil)
-        if value.kind_of?(String) && column && column.type == :binary && column.class.respond_to?(:string_to_binary)
-          s = column.class.string_to_binary(value).unpack("H*")[0]
+        if value.kind_of?(String) && column && column.type == :binary
+          s = value.unpack("H*")[0]
           "x'#{s}'"
         elsif value.kind_of?(BigDecimal)
           value.to_s("F")
@@ -337,18 +335,6 @@ module ActiveRecord
         execute "ROLLBACK"
       rescue
         # Transactions aren't supported
-      end
-
-      def create_savepoint
-        execute("SAVEPOINT #{current_savepoint_name}")
-      end
-
-      def rollback_to_savepoint
-        execute("ROLLBACK TO SAVEPOINT #{current_savepoint_name}")
-      end
-
-      def release_savepoint
-        execute("RELEASE SAVEPOINT #{current_savepoint_name}")
       end
 
       # In the simple case, MySQL allows us to place JOINs directly into the UPDATE
@@ -469,7 +455,8 @@ module ActiveRecord
         sql = "SHOW FULL FIELDS FROM #{quote_table_name(table_name)}"
         execute_and_free(sql, 'SCHEMA') do |result|
           each_hash(result).map do |field|
-            new_column(field[:Field], field[:Default], field[:Type], field[:Null] == "YES", field[:Collation], field[:Extra])
+            field_name = set_field_encoding(field[:Field])
+            new_column(field_name, field[:Default], field[:Type], field[:Null] == "YES", field[:Collation], field[:Extra])
           end
         end
       end

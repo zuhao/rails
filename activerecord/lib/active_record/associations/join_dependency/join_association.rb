@@ -1,3 +1,5 @@
+require 'active_record/associations/join_dependency/join_part'
+
 module ActiveRecord
   module Associations
     class JoinDependency # :nodoc:
@@ -27,19 +29,13 @@ module ActiveRecord
         delegate :options, :through_reflection, :source_reflection, :chain, :to => :reflection
         delegate :alias_tracker, :to => :join_dependency
 
-        def initialize(reflection, join_dependency, parent = nil)
-          reflection.check_validity!
-
-          if reflection.options[:polymorphic]
-            raise EagerLoadPolymorphicError.new(reflection)
-          end
-
+        def initialize(reflection, join_dependency, parent, join_type)
           super(reflection.klass)
 
           @reflection      = reflection
           @join_dependency = join_dependency
           @parent          = parent
-          @join_type       = Arel::InnerJoin
+          @join_type       = join_type
           @aliased_prefix  = "t#{ join_dependency.join_parts.size }"
           @tables          = construct_tables.reverse
         end
@@ -83,17 +79,6 @@ module ActiveRecord
             when :belongs_to
               key         = reflection.association_primary_key
               foreign_key = reflection.foreign_key
-            when :has_and_belongs_to_many
-              # Join the join table first...
-              joins << join(
-                table,
-                table[reflection.foreign_key].
-                  eq(foreign_table[reflection.active_record_primary_key]))
-
-              foreign_table, table = table, tables.shift
-
-              key         = reflection.association_primary_key
-              foreign_key = reflection.association_foreign_key
             else
               key         = reflection.foreign_key
               foreign_key = reflection.active_record_primary_key

@@ -42,6 +42,11 @@ class RelationTest < ActiveRecord::TestCase
   end
 
   def test_two_scopes_with_includes_should_not_drop_any_include
+    # heat habtm cache
+    car = Car.incl_engines.incl_tyres.first
+    car.tyres.length
+    car.engines.length
+
     car = Car.incl_engines.incl_tyres.first
     assert_no_queries { car.tyres.length }
     assert_no_queries { car.engines.length }
@@ -139,6 +144,13 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal relation.to_a, Topic.select('a.*').from(relation, :a).to_a
   end
 
+  def test_finding_with_subquery_with_binds
+    relation = Post.first.comments
+    assert_equal relation.to_a, Comment.select('*').from(relation).to_a
+    assert_equal relation.to_a, Comment.select('subquery.*').from(relation).to_a
+    assert_equal relation.to_a, Comment.select('a.*').from(relation, :a).to_a
+  end
+
   def test_finding_with_conditions
     assert_equal ["David"], Author.where(:name => 'David').map(&:name)
     assert_equal ['Mary'],  Author.where(["name = ?", 'Mary']).map(&:name)
@@ -170,6 +182,10 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal topics(:fourth).title, topics.first.title
   end
 
+  def test_order_with_hash_and_symbol_generates_the_same_sql
+    assert_equal Topic.order(:id).to_sql, Topic.order(:id => :asc).to_sql
+  end
+
   def test_raising_exception_on_invalid_hash_params
     assert_raise(ArgumentError) { Topic.order(:name, "id DESC", :id => :DeSc) }
   end
@@ -180,7 +196,7 @@ class RelationTest < ActiveRecord::TestCase
   end
 
   def test_finding_with_order_concatenated
-    topics = Topic.order('title').order('author_name')
+    topics = Topic.order('author_name').order('title')
     assert_equal 4, topics.to_a.size
     assert_equal topics(:fourth).title, topics.first.title
   end
@@ -287,6 +303,10 @@ class RelationTest < ActiveRecord::TestCase
   def test_null_relation_metadata_methods
     assert_equal "", Developer.none.to_sql
     assert_equal({}, Developer.none.where_values_hash)
+  end
+
+  def test_null_relation_where_values_hash
+    assert_equal({ 'salary' => 100_000 }, Developer.none.where(salary: 100_000).where_values_hash)
   end
 
   def test_joins_with_nil_argument
@@ -1183,20 +1203,20 @@ class RelationTest < ActiveRecord::TestCase
   end
 
   def test_default_scope_order_with_scope_order
-    assert_equal 'honda', CoolCar.order_using_new_style.limit(1).first.name
-    assert_equal 'honda', FastCar.order_using_new_style.limit(1).first.name
+    assert_equal 'zyke', CoolCar.order_using_new_style.limit(1).first.name
+    assert_equal 'zyke', FastCar.order_using_new_style.limit(1).first.name
   end
 
   def test_order_using_scoping
     car1 = CoolCar.order('id DESC').scoping do
-      CoolCar.all.merge!(:order => 'id asc').first
+      CoolCar.all.merge!(order: 'id asc').first
     end
-    assert_equal 'honda', car1.name
+    assert_equal 'zyke', car1.name
 
     car2 = FastCar.order('id DESC').scoping do
-      FastCar.all.merge!(:order => 'id asc').first
+      FastCar.all.merge!(order: 'id asc').first
     end
-    assert_equal 'honda', car2.name
+    assert_equal 'zyke', car2.name
   end
 
   def test_unscoped_block_style
@@ -1337,6 +1357,24 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal ['comments'], scope.references_values
 
     scope = Post.order('foo(comments.body)')
+    assert_equal [], scope.references_values
+  end
+
+  def test_automatically_added_reorder_references
+    scope = Post.reorder('comments.body')
+    assert_equal %w(comments), scope.references_values
+
+    scope = Post.reorder('comments.body', 'yaks.body')
+    assert_equal %w(comments yaks), scope.references_values
+
+    # Don't infer yaks, let's not go down that road again...
+    scope = Post.reorder('comments.body, yaks.body')
+    assert_equal %w(comments), scope.references_values
+
+    scope = Post.reorder('comments.body asc')
+    assert_equal %w(comments), scope.references_values
+
+    scope = Post.reorder('foo(comments.body)')
     assert_equal [], scope.references_values
   end
 

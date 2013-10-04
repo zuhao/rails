@@ -12,11 +12,11 @@ require 'active_support/testing/autorun'
 require 'action_mailer'
 require 'action_mailer/test_case'
 require 'active_support/queueing'
+require 'mail'
 
-silence_warnings do
-  # These external dependencies have warnings :/
-  require 'mail'
-end
+# Emulate AV railtie
+require 'action_view'
+ActionMailer::Base.send(:include, ActionView::Layouts)
 
 # Show backtraces for deprecated behavior for quicker cleanup.
 ActiveSupport::Deprecation.debug = true
@@ -60,5 +60,3 @@ end
 def restore_delivery_method
   ActionMailer::Base.delivery_method = @old_delivery_method
 end
-
-ActiveSupport::Deprecation.silenced = true

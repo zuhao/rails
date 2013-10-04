@@ -5,6 +5,7 @@ require 'active_support/core_ext/string/inflections'
 require 'active_support/core_ext/hash/except'
 require 'active_support/core_ext/module/anonymous'
 require 'active_support/queueing'
+
 require 'action_mailer/log_subscriber'
 
 module ActionMailer
@@ -365,11 +366,12 @@ module ActionMailer
   # * <tt>queue</tt> - The queue that will be used to deliver the mail. The queue should expect a job that responds to <tt>run</tt>.
   class Base < AbstractController::Base
     include DeliveryMethods
+
     abstract!
 
-    include AbstractController::Logger
     include AbstractController::Rendering
-    include AbstractController::Layouts
+
+    include AbstractController::Logger
     include AbstractController::Helpers
     include AbstractController::Translation
     include AbstractController::AssetPaths
