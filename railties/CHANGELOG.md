@@ -1,3 +1,11 @@
+*   Added `--model-name` option to `ScaffoldControllerGenerator`.
+
+    *yalab*
+
+*   Expose MiddlewareStack#unshift to environment configuration.
+
+    *Ben Pickles*
+
 *   Include `web-console` into newly generated applications' Gemfile.
 
     *Genadi Samokovarov*

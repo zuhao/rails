@@ -1,10 +1,10 @@
 module ActiveRecord::Associations::Builder
   class BelongsTo < SingularAssociation #:nodoc:
-    def macro
+    def self.macro
       :belongs_to
     end
 
-    def valid_options
+    def self.valid_options(options)
       super + [:foreign_type, :polymorphic, :touch]
     end
 
@@ -18,14 +18,12 @@ module ActiveRecord::Associations::Builder
       add_touch_callbacks(model, reflection)         if reflection.options[:touch]
     end
 
-    def define_accessors(mixin, reflection)
+    def self.define_accessors(mixin, reflection)
       super
       add_counter_cache_methods mixin
     end
 
-    private
-
-    def add_counter_cache_methods(mixin)
+    def self.add_counter_cache_methods(mixin)
       return if mixin.method_defined? :belongs_to_counter_cache_after_create
 
       mixin.class_eval do

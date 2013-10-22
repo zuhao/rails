@@ -367,21 +367,22 @@ module ActiveRecord
 
       protected
 
-      def actual_source_reflection # FIXME: this is a horrible name
-        self
-      end
+        def actual_source_reflection # FIXME: this is a horrible name
+          self
+        end
 
       private
-      def calculate_constructable(macro, options)
-        case macro
-        when :belongs_to
-          !options[:polymorphic]
-        when :has_one
-          !options[:through]
-        else
-          true
+
+        def calculate_constructable(macro, options)
+          case macro
+          when :belongs_to
+            !options[:polymorphic]
+          when :has_one
+            !options[:through]
+          else
+            true
+          end
         end
-      end
 
         # Attempts to find the inverse association name automatically.
         # If it cannot find a suitable inverse association name, it returns
@@ -573,7 +574,7 @@ module ActiveRecord
           # Add to it the scope from this reflection (if any)
           scope_chain.first << scope if scope
 
-          through_scope_chain = through_reflection.scope_chain
+          through_scope_chain = through_reflection.scope_chain.map(&:dup)
 
           if options[:source_type]
             through_scope_chain.first <<

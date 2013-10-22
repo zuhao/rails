@@ -119,20 +119,23 @@ class << Time
   end
 end
 
-module LogIntercepter
-  attr_accessor :logged, :intercepted
-  def self.extended(base)
-    base.logged = []
+class SQLSubscriber
+  attr_reader :logged
+  attr_reader :payloads
+
+  def initialize
+    @logged = []
+    @payloads = []
   end
-  def log(sql, name = 'SQL', binds = [], &block)
-    if @intercepted
-      @logged << [sql, name, binds]
-      yield
-    else
-      super(sql, name,binds, &block)
-    end
+
+  def start(name, id, payload)
+    @payloads << payload
+    @logged << [payload[:sql], payload[:name], payload[:binds]]
   end
+
+  def finish(name, id, payload); end
 end
+
 
 module InTimeZone
   private

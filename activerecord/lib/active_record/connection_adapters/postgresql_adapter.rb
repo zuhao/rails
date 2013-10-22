@@ -45,12 +45,12 @@ module ActiveRecord
   module ConnectionAdapters
     # PostgreSQL-specific extensions to column definitions in a table.
     class PostgreSQLColumn < Column #:nodoc:
-      attr_accessor :array, :default_function
+      attr_accessor :array
       # Instantiates a new PostgreSQL column definition in a table.
       def initialize(name, default, oid_type, sql_type = nil, null = true)
         @oid_type = oid_type
         default_value     = self.class.extract_value_from_default(default)
-        @default_function = default if !default_value && default && default =~ /.+\(.*\)/
+
         if sql_type =~ /\[\]$/
           @array = true
           super(name, default_value, sql_type[0..sql_type.length - 3], null)
@@ -58,6 +58,8 @@ module ActiveRecord
           @array = false
           super(name, default_value, sql_type, null)
         end
+
+        @default_function = default if has_default_function?(default_value, default)
       end
 
       # :stopdoc:
@@ -147,6 +149,10 @@ module ActiveRecord
       end
 
       private
+
+        def has_default_function?(default_value, default)
+          !default_value && (%r{\w+\(.*\)} === default)
+        end
 
         def extract_limit(sql_type)
           case sql_type
@@ -442,7 +448,7 @@ module ActiveRecord
       def prepare_column_options(column, types)
         spec = super
         spec[:array] = 'true' if column.respond_to?(:array) && column.array
-        spec[:default] = "\"#{column.default_function}\"" if column.respond_to?(:default_function) && column.default_function
+        spec[:default] = "\"#{column.default_function}\"" if column.default_function
         spec
       end
 
@@ -767,27 +773,29 @@ module ActiveRecord
 
         FEATURE_NOT_SUPPORTED = "0A000" # :nodoc:
 
-        def exec_no_cache(sql, binds)
-          @connection.async_exec(sql)
+        def exec_no_cache(sql, name, binds)
+          log(sql, name, binds) { @connection.async_exec(sql) }
         end
 
-        def exec_cache(sql, binds)
+        def exec_cache(sql, name, binds)
           stmt_key = prepare_statement(sql)
 
-          # Clear the queue
-          @connection.get_last_result
-          @connection.send_query_prepared(stmt_key, binds.map { |col, val|
-            type_cast(val, col)
-          })
-          @connection.block
-          @connection.get_last_result
-        rescue PGError => e
+          log(sql, name, binds, stmt_key) do
+            @connection.send_query_prepared(stmt_key, binds.map { |col, val|
+              type_cast(val, col)
+            })
+            @connection.block
+            @connection.get_last_result
+          end
+        rescue ActiveRecord::StatementInvalid => e
+          pgerror = e.original_exception
+
           # Get the PG code for the failure.  Annoyingly, the code for
           # prepared statements whose return value may have changed is
           # FEATURE_NOT_SUPPORTED.  Check here for more details:
           # http://git.postgresql.org/gitweb/?p=postgresql.git;a=blob;f=src/backend/utils/cache/plancache.c#l573
           begin
-            code = e.result.result_error_field(PGresult::PG_DIAG_SQLSTATE)
+            code = pgerror.result.result_error_field(PGresult::PG_DIAG_SQLSTATE)
           rescue
             raise e
           end
@@ -812,6 +820,8 @@ module ActiveRecord
           unless @statements.key? sql_key
             nextkey = @statements.next_key
             @connection.prepare nextkey, sql
+            # Clear the queue
+            @connection.get_last_result
             @statements[sql_key] = nextkey
           end
           @statements[sql_key]

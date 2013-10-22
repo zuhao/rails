@@ -274,7 +274,7 @@ class RelationTest < ActiveRecord::TestCase
 
   def test_none_chained_to_methods_firing_queries_straight_to_db
     assert_no_queries do
-      assert_equal [],    Developer.none.pluck(:id) # => uses select_all
+      assert_equal [],    Developer.none.pluck(:id, :name)
       assert_equal 0,     Developer.none.delete_all
       assert_equal 0,     Developer.none.update_all(:name => 'David')
       assert_equal 0,     Developer.none.delete(1)
@@ -295,7 +295,7 @@ class RelationTest < ActiveRecord::TestCase
   def test_null_relation_calculations_methods
     assert_no_queries do
       assert_equal 0, Developer.none.count
-      assert_equal 0, Developer.none.calculate(:count, nil, {})
+      assert_equal 0, Developer.none.calculate(:count, nil)
       assert_equal nil, Developer.none.calculate(:average, 'salary')
     end
   end
@@ -486,6 +486,14 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal Developer.where(name: 'David').map(&:id).sort, developers
   end
 
+  def test_includes_with_select
+    query = Post.select('comments_count AS ranking').order('ranking').includes(:comments)
+      .where(comments: { id: 1 })
+
+    assert_equal ['comments_count AS ranking'], query.select_values
+    assert_equal 1, query.to_a.size
+  end
+
   def test_loading_with_one_association
     posts = Post.preload(:comments)
     post = posts.find { |p| p.id == 1 }
@@ -626,6 +634,36 @@ class RelationTest < ActiveRecord::TestCase
       relation = Author.where(:id => Author.where(:id => david.id))
       assert_equal [david], relation.to_a
     }
+
+    assert_queries(1) {
+      relation = Author.where('id in (?)', Author.where(id: david).select(:id))
+      assert_equal [david], relation.to_a
+    }
+
+    assert_queries(1) do
+      relation = Author.where('id in (:author_ids)', author_ids: Author.where(id: david).select(:id))
+      assert_equal [david], relation.to_a
+    end
+  end
+
+  def test_find_all_using_where_with_relation_with_bound_values
+    david = authors(:david)
+    davids_posts = david.posts.to_a
+
+    assert_queries(1) do
+      relation = Post.where(id: david.posts.select(:id))
+      assert_equal davids_posts, relation.to_a
+    end
+
+    assert_queries(1) do
+      relation = Post.where('id in (?)', david.posts.select(:id))
+      assert_equal davids_posts, relation.to_a, 'should process Relation as bind variables'
+    end
+
+    assert_queries(1) do
+      relation = Post.where('id in (:post_ids)', post_ids: david.posts.select(:id))
+      assert_equal davids_posts, relation.to_a, 'should process Relation as named bind variables'
+    end
   end
 
   def test_find_all_using_where_with_relation_and_alternate_primary_key

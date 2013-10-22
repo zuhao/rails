@@ -1,3 +1,88 @@
+*    Sub-query generated for `Relation` passed as array condition did not take in account
+     bind values and have invalid syntax.
+
+     Generate sub-query with inline bind values.
+
+     Fixes: #12586
+
+     *Paul Nikitochkin*
+
+*   Fix a bug where rake db:structure:load crashed when the path contained
+    spaces.
+
+    *Kevin Mook*
+
+*   `ActiveRecord::QueryMethods#unscope` unscopes negative equality
+
+    Allows you to call `#unscope` on a relation with negative equality 
+    operators, i.e. `Arel::Nodes::NotIn` and `Arel::Nodes::NotEqual` that have
+    been generated through the use of `where.not`.
+
+    *Eric Hankins*
+
+*   Raise an exception when model without primary key calls `.find_with_ids`.
+
+    *Shimpei Makimoto*
+
+*   Make `Relation#empty?` use `exists?` instead of `count`.
+
+    *Szymon Nowak*
+
+*   `rake db:structure:dump` no longer crashes when the port was specified as `Fixnum`.
+
+    *Kenta Okamoto*
+
+*   `NullRelation#pluck` takes a list of columns
+
+    The method signature in `NullRelation` was updated to mimic that in
+    `Calculations`.
+
+    *Derek Prior*
+
+*   `scope_chain` should not be mutated for other reflections.
+
+    Currently `scope_chain` uses same array for building different
+    `scope_chain` for different associations. During processing
+    these arrays are sometimes mutated and because of in-place
+    mutation the changed `scope_chain` impacts other reflections.
+
+    Fix is to dup the value before adding to the `scope_chain`.
+
+    Fixes #3882.
+
+    *Neeraj Singh*
+
+*   Prevent the inversed association from being reloaded on save.
+
+    Fixes #9499.
+
+    *Dmitry Polushkin*
+
+*   Generate subquery for `Relation` if it passed as array condition for `where`
+    method.
+
+    Example:
+
+        # Before
+        Blog.where('id in (?)', Blog.where(id: 1))
+        # =>  SELECT "blogs".* FROM "blogs"  WHERE "blogs"."id" = 1
+        # =>  SELECT "blogs".* FROM "blogs"  WHERE (id IN (1))
+
+        # After
+        Blog.where('id in (?)', Blog.where(id: 1).select(:id))
+        # =>  SELECT "blogs".* FROM "blogs"
+        #     WHERE "blogs"."id" IN (SELECT "blogs"."id" FROM "blogs"  WHERE "blogs"."id" = 1)
+
+    Fixes #12415.
+
+    *Paul Nikitochkin*
+
+*   For missed association exception message
+    which is raised in `ActiveRecord::Associations::Preloader` class
+    added owner record class name in order to simplify to find problem code.
+
+    *Paul Nikitochkin*
+
 *   `has_and_belongs_to_many` is now transparently implemented in terms of
     `has_many :through`.  Behavior should remain the same, if not, it is a bug.
 
@@ -199,6 +284,12 @@
 
     *Yves Senn*
 
+*   Fixes bug when using includes combined with select, the select statement was overwritten.
+
+    Fixes #11773
+
+    *Edo Balvers*
+
 *   Load fixtures from linked folders.
 
     *Kassio Borges*
@@ -285,13 +376,13 @@
 *   Reset @column_defaults when assigning `locking_column`.
     We had a potential problem. For example:
 
-    class Post < ActiveRecord::Base
-      self.column_defaults  # if we call this unintentionally before setting locking_column ...
-      self.locking_column = 'my_locking_column'
-    end
+      class Post < ActiveRecord::Base
+        self.column_defaults  # if we call this unintentionally before setting locking_column ...
+        self.locking_column = 'my_locking_column'
+      end
 
-    Post.column_defaults["my_locking_column"]
-    => nil # expected value is 0 !
+      Post.column_defaults["my_locking_column"]
+      => nil # expected value is 0 !
 
     *kennyj*
 
@@ -538,7 +629,7 @@
 
     *Neeraj Singh*
 
-*   Fixture setup does no longer depend on `ActiveRecord::Base.configurations`.
+*   Fixture setup no longer depends on `ActiveRecord::Base.configurations`.
     This is relevant when `ENV["DATABASE_URL"]` is used in place of a `database.yml`.
 
     *Yves Senn*

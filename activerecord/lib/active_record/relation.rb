@@ -244,8 +244,7 @@ module ActiveRecord
     def empty?
       return @records.empty? if loaded?
 
-      c = count(:all)
-      c.respond_to?(:zero?) ? c.zero? : c.empty?
+      limit_value == 0 ? true : !exists?
     end
 
     # Returns true if there are any records.
@@ -507,8 +506,7 @@ module ActiveRecord
                     visitor    = connection.visitor
 
                     if eager_loading?
-                      join_dependency = construct_join_dependency
-                      relation        = construct_relation_for_association_find(join_dependency)
+                      find_with_associations { |rel| relation = rel }
                     end
 
                     ast   = relation.arel.ast
