@@ -50,10 +50,8 @@ module ActiveRecord
       0
     end
 
-    def calculate(operation, _column_name, _options = {})
-      # TODO: Remove _options argument as soon we remove support to
-      # activerecord-deprecated_finders.
-      if operation == :count
+    def calculate(_operation, _column_name)
+      if _operation == :count
         0
       else
         nil
