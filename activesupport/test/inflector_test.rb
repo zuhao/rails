@@ -70,10 +70,11 @@ class InflectorTest < ActiveSupport::TestCase
 
 
   def test_overwrite_previous_inflectors
-    assert_equal("series", ActiveSupport::Inflector.singularize("series"))
-    ActiveSupport::Inflector.inflections.singular "series", "serie"
-    assert_equal("serie", ActiveSupport::Inflector.singularize("series"))
-    ActiveSupport::Inflector.inflections.uncountable "series" # Return to normal
+    with_dup do
+      assert_equal("series", ActiveSupport::Inflector.singularize("series"))
+      ActiveSupport::Inflector.inflections.singular "series", "serie"
+      assert_equal("serie", ActiveSupport::Inflector.singularize("series"))
+    end
   end
 
   MixtureToTitleCase.each_with_index do |(before, titleized), index|
@@ -284,6 +285,12 @@ class InflectorTest < ActiveSupport::TestCase
   def test_humanize
     UnderscoreToHuman.each do |underscore, human|
       assert_equal(human, ActiveSupport::Inflector.humanize(underscore))
+    end
+  end
+
+  def test_humanize_without_capitalize
+    UnderscoreToHumanWithoutCapitalize.each do |underscore, human|
+      assert_equal(human, ActiveSupport::Inflector.humanize(underscore, capitalize: false))
     end
   end
 

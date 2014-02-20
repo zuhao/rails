@@ -69,7 +69,7 @@ module ActiveRecord
       # The target is stale if the target no longer points to the record(s) that the
       # relevant foreign_key(s) refers to. If stale, the association accessor method
       # on the owner will reload the target. It's up to subclasses to implement the
-      # state_state method if relevant.
+      # stale_state method if relevant.
       #
       # Note that if the target has not been loaded, it is not considered stale.
       def stale_target?
@@ -94,7 +94,7 @@ module ActiveRecord
       # actually gets built.
       def association_scope
         if klass
-          @association_scope ||= AssociationScope.new(self).scope
+          @association_scope ||= AssociationScope.scope(self, klass.connection)
         end
       end
 
@@ -104,11 +104,12 @@ module ActiveRecord
 
       # Set the inverse association, if possible
       def set_inverse_instance(record)
-        if record && invertible_for?(record)
+        if invertible_for?(record)
           inverse = record.association(inverse_reflection_for(record).name)
           inverse.target = owner
           inverse.inversed = true
         end
+        record
       end
 
       # Returns the class of the target. belongs_to polymorphic overrides this to look at the
@@ -226,7 +227,12 @@ module ActiveRecord
         # Returns true if inverse association on the given record needs to be set.
         # This method is redefined by subclasses.
         def invertible_for?(record)
-          inverse_reflection_for(record)
+          foreign_key_for?(record) && inverse_reflection_for(record)
+        end
+
+        # Returns true if record contains the foreign_key
+        def foreign_key_for?(record)
+          record.attributes.has_key? reflection.foreign_key
         end
 
         # This should be implemented to return the values of the relevant key(s) on the owner,

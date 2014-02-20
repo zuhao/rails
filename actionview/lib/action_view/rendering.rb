@@ -77,13 +77,6 @@ module ActionView
       @_view_renderer ||= ActionView::Renderer.new(lookup_context)
     end
 
-    # Find and renders a template based on the options given.
-    # :api: private
-    def _render_template(options) #:nodoc:
-      lookup_context.rendered_format = nil if options[:formats]
-      view_renderer.render(view_context, options)
-    end
-
     def render_to_body(options = {})
       _process_options(options)
       _render_template(options)
@@ -95,9 +88,25 @@ module ActionView
 
     private
 
+      # Find and render a template based on the options given.
+      # :api: private
+      def _render_template(options) #:nodoc:
+        variant = options[:variant]
+
+        lookup_context.rendered_format = nil if options[:formats]
+        lookup_context.variants = variant if variant
+
+        view_renderer.render(view_context, options)
+      end
+
       # Assign the rendered format to lookup context.
-      def _process_format(format) #:nodoc:
+      def _process_format(format, options = {}) #:nodoc:
         super
+
+        if options[:body]
+          self.no_content_type = true
+        end
+
         lookup_context.formats = [format.to_sym]
         lookup_context.rendered_format = lookup_context.formats.first
       end

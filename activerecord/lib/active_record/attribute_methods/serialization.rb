@@ -24,6 +24,9 @@ module ActiveRecord
         # serialized object must be of that class on retrieval or
         # <tt>SerializationTypeMismatch</tt> will be raised.
         #
+        # A notable side effect of serialized attributes is that the model will
+        # be updated on every save, even if it is not dirty.
+        #
         # ==== Parameters
         #
         # * +attr_name+ - The field name that should be serialized.
@@ -65,6 +68,10 @@ module ActiveRecord
 
         def type
           @column.type
+        end
+
+        def accessor
+          ActiveRecord::Store::IndifferentHashAccessor
         end
       end
 
@@ -108,6 +115,14 @@ module ActiveRecord
           end
         end
 
+        def should_record_timestamps?
+          super || (self.record_timestamps && (attributes.keys & self.class.serialized_attributes.keys).present?)
+        end
+
+        def keys_for_partial_write
+          super | (attributes.keys & self.class.serialized_attributes.keys)
+        end
+
         def type_cast_attribute_for_write(column, value)
           if column && coder = self.class.serialized_attributes[column.name]
             Attribute.new(coder, value, :unserialized)
@@ -147,6 +162,16 @@ module ActiveRecord
             @attributes[name].serialized_value
           else
             super
+          end
+        end
+
+        def attributes_for_coder
+          attribute_names.each_with_object({}) do |name, attrs|
+            attrs[name] = if self.class.serialized_attributes.include?(name)
+                            @attributes[name].serialized_value
+                          else
+                            read_attribute(name)
+                          end
           end
         end
       end

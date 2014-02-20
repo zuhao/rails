@@ -78,22 +78,6 @@ end
 class BasicsTest < ActiveRecord::TestCase
   fixtures :topics, :companies, :developers, :projects, :computers, :accounts, :minimalistics, 'warehouse-things', :authors, :categorizations, :categories, :posts
 
-  def setup
-    ActiveRecord::Base.time_zone_aware_attributes = false
-    ActiveRecord::Base.default_timezone = :local
-    Time.zone = nil
-  end
-
-  def test_generated_methods_modules
-    modules = Computer.ancestors
-    assert modules.include?(Computer::GeneratedFeatureMethods)
-    assert_equal(Computer::GeneratedFeatureMethods, Computer.generated_feature_methods)
-    assert(modules.index(Computer.generated_attribute_methods) > modules.index(Computer.generated_feature_methods),
-           "generated_attribute_methods must be higher in inheritance hierarchy than generated_feature_methods")
-    assert_not_equal Computer.generated_feature_methods, Post.generated_feature_methods
-    assert(modules.index(Computer.generated_attribute_methods) < modules.index(ActiveRecord::Base.ancestors[1]))
-  end
-
   def test_column_names_are_escaped
     conn      = ActiveRecord::Base.connection
     classname = conn.class.name[/[^:]*$/]
@@ -135,6 +119,10 @@ class BasicsTest < ActiveRecord::TestCase
   def test_limit_without_comma
     assert_equal 1, Topic.limit("1").to_a.length
     assert_equal 1, Topic.limit(1).to_a.length
+  end
+
+  def test_limit_should_take_value_from_latest_limit
+    assert_equal 1, Topic.limit(2).limit(1).to_a.length
   end
 
   def test_invalid_limit
@@ -234,7 +222,7 @@ class BasicsTest < ActiveRecord::TestCase
 
   def test_preserving_time_objects_with_local_time_conversion_to_default_timezone_utc
     with_env_tz 'America/New_York' do
-      with_active_record_default_timezone :utc do
+      with_timezone_config default: :utc do
         time = Time.local(2000)
         topic = Topic.create('written_on' => time)
         saved_time = Topic.find(topic.id).reload.written_on
@@ -247,7 +235,7 @@ class BasicsTest < ActiveRecord::TestCase
 
   def test_preserving_time_objects_with_time_with_zone_conversion_to_default_timezone_utc
     with_env_tz 'America/New_York' do
-      with_active_record_default_timezone :utc do
+      with_timezone_config default: :utc do
         Time.use_zone 'Central Time (US & Canada)' do
           time = Time.zone.local(2000)
           topic = Topic.create('written_on' => time)
@@ -262,18 +250,20 @@ class BasicsTest < ActiveRecord::TestCase
 
   def test_preserving_time_objects_with_utc_time_conversion_to_default_timezone_local
     with_env_tz 'America/New_York' do
-      time = Time.utc(2000)
-      topic = Topic.create('written_on' => time)
-      saved_time = Topic.find(topic.id).reload.written_on
-      assert_equal time, saved_time
-      assert_equal [0, 0, 0, 1, 1, 2000, 6, 1, false, "UTC"], time.to_a
-      assert_equal [0, 0, 19, 31, 12, 1999, 5, 365, false, "EST"], saved_time.to_a
+      with_timezone_config default: :local do
+        time = Time.utc(2000)
+        topic = Topic.create('written_on' => time)
+        saved_time = Topic.find(topic.id).reload.written_on
+        assert_equal time, saved_time
+        assert_equal [0, 0, 0, 1, 1, 2000, 6, 1, false, "UTC"], time.to_a
+        assert_equal [0, 0, 19, 31, 12, 1999, 5, 365, false, "EST"], saved_time.to_a
+      end
     end
   end
 
   def test_preserving_time_objects_with_time_with_zone_conversion_to_default_timezone_local
     with_env_tz 'America/New_York' do
-      with_active_record_default_timezone :local do
+      with_timezone_config default: :local do
         Time.use_zone 'Central Time (US & Canada)' do
           time = Time.zone.local(2000)
           topic = Topic.create('written_on' => time)
@@ -331,7 +321,7 @@ class BasicsTest < ActiveRecord::TestCase
 
   def test_load
     topics = Topic.all.merge!(:order => 'id').to_a
-    assert_equal(4, topics.size)
+    assert_equal(5, topics.size)
     assert_equal(topics(:first).title, topics.first.title)
   end
 
@@ -493,25 +483,25 @@ class BasicsTest < ActiveRecord::TestCase
   # Oracle, and Sybase do not have a TIME datatype.
   unless current_adapter?(:OracleAdapter, :SybaseAdapter)
     def test_utc_as_time_zone
-      Topic.default_timezone = :utc
-      attributes = { "bonus_time" => "5:42:00AM" }
-      topic = Topic.find(1)
-      topic.attributes = attributes
-      assert_equal Time.utc(2000, 1, 1, 5, 42, 0), topic.bonus_time
-      Topic.default_timezone = :local
+      with_timezone_config default: :utc do
+        attributes = { "bonus_time" => "5:42:00AM" }
+        topic = Topic.find(1)
+        topic.attributes = attributes
+        assert_equal Time.utc(2000, 1, 1, 5, 42, 0), topic.bonus_time
+      end
     end
 
     def test_utc_as_time_zone_and_new
-      Topic.default_timezone = :utc
-      attributes = { "bonus_time(1i)"=>"2000",
-                     "bonus_time(2i)"=>"1",
-                     "bonus_time(3i)"=>"1",
-                     "bonus_time(4i)"=>"10",
-                     "bonus_time(5i)"=>"35",
-                     "bonus_time(6i)"=>"50" }
-      topic = Topic.new(attributes)
-      assert_equal Time.utc(2000, 1, 1, 10, 35, 50), topic.bonus_time
-      Topic.default_timezone = :local
+      with_timezone_config default: :utc do
+        attributes = { "bonus_time(1i)"=>"2000",
+          "bonus_time(2i)"=>"1",
+          "bonus_time(3i)"=>"1",
+          "bonus_time(4i)"=>"10",
+          "bonus_time(5i)"=>"35",
+          "bonus_time(6i)"=>"50" }
+        topic = Topic.new(attributes)
+        assert_equal Time.utc(2000, 1, 1, 10, 35, 50), topic.bonus_time
+      end
     end
   end
 
@@ -556,6 +546,19 @@ class BasicsTest < ActiveRecord::TestCase
 
   def test_hashing
     assert_equal [ Topic.find(1) ], [ Topic.find(2).topic ] & [ Topic.find(1) ]
+  end
+
+  def test_successful_comparison_of_like_class_records
+    topic_1 = Topic.create!
+    topic_2 = Topic.create!
+
+    assert_equal [topic_2, topic_1].sort, [topic_1, topic_2]
+  end
+
+  def test_failed_comparison_of_unlike_class_records
+    assert_raises ArgumentError do
+      [ topics(:first), posts(:welcome) ].sort
+    end
   end
 
   def test_create_without_prepared_statement
@@ -608,8 +611,23 @@ class BasicsTest < ActiveRecord::TestCase
   end
 
   def test_unicode_column_name
+    Weird.reset_column_information
     weird = Weird.create(:なまえ => 'たこ焼き仮面')
     assert_equal 'たこ焼き仮面', weird.なまえ
+  end
+
+  unless current_adapter?(:PostgreSQLAdapter)
+    def test_respect_internal_encoding
+      old_default_internal = Encoding.default_internal
+      silence_warnings { Encoding.default_internal = "EUC-JP" }
+
+      Weird.reset_column_information
+
+      assert_equal ["EUC-JP"], Weird.columns.map {|c| c.name.encoding.name }.uniq
+    ensure
+      silence_warnings { Encoding.default_internal = old_default_internal }
+      Weird.reset_column_information
+    end
   end
 
   def test_non_valid_identifier_column_name
@@ -634,12 +652,14 @@ class BasicsTest < ActiveRecord::TestCase
     # Oracle, and Sybase do not have a TIME datatype.
     return true if current_adapter?(:OracleAdapter, :SybaseAdapter)
 
-    attributes = {
-      "bonus_time" => "5:42:00AM"
-    }
-    topic = Topic.find(1)
-    topic.attributes = attributes
-    assert_equal Time.local(2000, 1, 1, 5, 42, 0), topic.bonus_time
+    with_timezone_config default: :local do
+      attributes = {
+        "bonus_time" => "5:42:00AM"
+      }
+      topic = Topic.find(1)
+      topic.attributes = attributes
+      assert_equal Time.local(2000, 1, 1, 5, 42, 0), topic.bonus_time
+    end
   end
 
   def test_attributes_on_dummy_time_with_invalid_time
@@ -827,19 +847,18 @@ class BasicsTest < ActiveRecord::TestCase
   # TODO: extend defaults tests to other databases!
   if current_adapter?(:PostgreSQLAdapter)
     def test_default
-      tz = Default.default_timezone
-      Default.default_timezone = :local
-      default = Default.new
-      Default.default_timezone = tz
+      with_timezone_config default: :local do
+        default = Default.new
 
-      # fixed dates / times
-      assert_equal Date.new(2004, 1, 1), default.fixed_date
-      assert_equal Time.local(2004, 1,1,0,0,0,0), default.fixed_time
+        # fixed dates / times
+        assert_equal Date.new(2004, 1, 1), default.fixed_date
+        assert_equal Time.local(2004, 1,1,0,0,0,0), default.fixed_time
 
-      # char types
-      assert_equal 'Y', default.char1
-      assert_equal 'a varchar field', default.char2
-      assert_equal 'a text field', default.char3
+        # char types
+        assert_equal 'Y', default.char1
+        assert_equal 'a varchar field', default.char2
+        assert_equal 'a text field', default.char3
+      end
     end
 
     class Geometric < ActiveRecord::Base; end
@@ -1111,7 +1130,7 @@ class BasicsTest < ActiveRecord::TestCase
     k = Class.new(ak)
     k.table_name = "projects"
     orig_name = k.sequence_name
-    return skip "sequences not supported by db" unless orig_name
+    skip "sequences not supported by db" unless orig_name
     assert_equal k.reset_sequence_name, orig_name
   end
 
@@ -1283,9 +1302,11 @@ class BasicsTest < ActiveRecord::TestCase
   end
 
   def test_compute_type_nonexistent_constant
-    assert_raises NameError do
+    e = assert_raises NameError do
       ActiveRecord::Base.send :compute_type, 'NonexistentModel'
     end
+    assert_equal 'uninitialized constant ActiveRecord::Base::NonexistentModel', e.message
+    assert_equal 'ActiveRecord::Base::NonexistentModel', e.name
   end
 
   def test_compute_type_no_method_error
@@ -1347,34 +1368,35 @@ class BasicsTest < ActiveRecord::TestCase
     assert_equal 1, post.comments.length
   end
 
-  def test_marshal_between_processes
-    skip "can't marshal between processes when using an in-memory db" if in_memory_db?
-    skip "fork isn't supported" unless Process.respond_to?(:fork)
+  if Process.respond_to?(:fork) && !in_memory_db?
+    def test_marshal_between_processes
+      # Define a new model to ensure there are no caches
+      if self.class.const_defined?("Post", false)
+        flunk "there should be no post constant"
+      end
 
-    # Define a new model to ensure there are no caches
-    if self.class.const_defined?("Post", false)
-      flunk "there should be no post constant"
-    end
+      self.class.const_set("Post", Class.new(ActiveRecord::Base) {
+        has_many :comments
+      })
 
-    self.class.const_set("Post", Class.new(ActiveRecord::Base) {
-      has_many :comments
-    })
+      rd, wr = IO.pipe
+      rd.binmode
+      wr.binmode
 
-    rd, wr = IO.pipe
+      ActiveRecord::Base.connection_handler.clear_all_connections!
 
-    ActiveRecord::Base.connection_handler.clear_all_connections!
+      fork do
+        rd.close
+        post = Post.new
+        post.comments.build
+        wr.write Marshal.dump(post)
+        wr.close
+      end
 
-    fork do
-      rd.close
-      post = Post.new
-      post.comments.build
-      wr.write Marshal.dump(post)
       wr.close
+      assert Marshal.load rd.read
+      rd.close
     end
-
-    wr.close
-    assert Marshal.load rd.read
-    rd.close
   end
 
   def test_marshalling_new_record_round_trip_with_associations

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2004-2013 David Heinemeier Hansson
+# Copyright (c) 2004-2014 David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -37,6 +37,7 @@ module ActiveRecord
   autoload :ConnectionHandling
   autoload :CounterCache
   autoload :DynamicMatchers
+  autoload :Enum
   autoload :Explain
   autoload :Inheritance
   autoload :Integration
@@ -44,6 +45,7 @@ module ActiveRecord
   autoload :Migrator, 'active_record/migration'
   autoload :ModelSchema
   autoload :NestedAttributes
+  autoload :NoTouching
   autoload :Persistence
   autoload :QueryCache
   autoload :Querying

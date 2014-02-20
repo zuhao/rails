@@ -54,6 +54,7 @@ module ActiveModel
   #   person.name = 'Bob'
   #   person.changed?       # => true
   #   person.name_changed?  # => true
+  #   person.name_changed?(from: "Uncle Bob", to: "Bob") # => true
   #   person.name_was       # => "Uncle Bob"
   #   person.name_change    # => ["Uncle Bob", "Bob"]
   #   person.name = 'Bill'
@@ -135,7 +136,7 @@ module ActiveModel
     #   person.save
     #   person.previous_changes # => {"name" => ["bob", "robert"]}
     def previous_changes
-      @previously_changed ||= {}
+      @previously_changed ||= ActiveSupport::HashWithIndifferentAccess.new
     end
 
     # Returns a hash of the attributes with unsaved changes indicating their original
@@ -149,12 +150,15 @@ module ActiveModel
     end
 
     # Handle <tt>*_changed?</tt> for +method_missing+.
-    def attribute_changed?(attr)
-      changed_attributes.include?(attr)
+    def attribute_changed?(attr, options = {}) #:nodoc:
+      result = changed_attributes.include?(attr)
+      result &&= options[:to] == __send__(attr) if options.key?(:to)
+      result &&= options[:from] == changed_attributes[attr] if options.key?(:from)
+      result
     end
 
     # Handle <tt>*_was</tt> for +method_missing+.
-    def attribute_was(attr)
+    def attribute_was(attr) # :nodoc:
       attribute_changed?(attr) ? changed_attributes[attr] : __send__(attr)
     end
 
@@ -163,13 +167,13 @@ module ActiveModel
       # Removes current changes and makes them accessible through +previous_changes+.
       def changes_applied
         @previously_changed = changes
-        @changed_attributes = {}
+        @changed_attributes = ActiveSupport::HashWithIndifferentAccess.new
       end
 
       # Removes all dirty data: current changes and previous changes
       def reset_changes
-        @previously_changed = {}
-        @changed_attributes = {}
+        @previously_changed = ActiveSupport::HashWithIndifferentAccess.new
+        @changed_attributes = ActiveSupport::HashWithIndifferentAccess.new
       end
 
       # Handle <tt>*_change</tt> for +method_missing+.

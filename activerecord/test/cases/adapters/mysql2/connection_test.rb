@@ -13,11 +13,24 @@ class MysqlConnectionTest < ActiveRecord::TestCase
     super
   end
 
+  def test_bad_connection
+    assert_raise ActiveRecord::NoDatabaseError do
+      configuration = ActiveRecord::Base.configurations['arunit'].merge(database: 'inexistent_activerecord_unittest')
+      connection = ActiveRecord::Base.mysql2_connection(configuration)
+      connection.exec_query('drop table if exists ex')
+    end
+  end
+
   def test_no_automatic_reconnection_after_timeout
     assert @connection.active?
     @connection.update('set @@wait_timeout=1')
     sleep 2
     assert !@connection.active?
+
+    # Repair all fixture connections so other tests won't break.
+    @fixture_connections.each do |c|
+      c.verify!
+    end
   end
 
   def test_successful_reconnection_after_timeout_with_manual_reconnect

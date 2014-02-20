@@ -490,6 +490,19 @@ end
 
 With this setup, you can retrieve `@employee.subordinates` and `@employee.manager`.
 
+In your migrations/schema, you will add a references column to the model itself.
+
+```ruby
+class CreateEmployees < ActiveRecord::Migration
+  def change
+    create_table :employees do |t|
+      t.references :manager
+      t.timestamps
+    end
+  end
+end
+```
+
 Tips, Tricks, and Warnings
 --------------------------
 
@@ -864,8 +877,12 @@ end
 Counter cache columns are added to the containing model's list of read-only attributes through `attr_readonly`.
 
 ##### `:dependent`
+If you set the `:dependent` option to:
 
-If you set the `:dependent` option to `:destroy`, then deleting this object will call the `destroy` method on the associated object to delete that object. If you set the `:dependent` option to `:delete`, then deleting this object will delete the associated object _without_ calling its `destroy` method. If you set the `:dependent` option to `:restrict`, then attempting to delete this object will result in a `ActiveRecord::DeleteRestrictionError` if there are any associated objects.
+* `:destroy`, when the object is destroyed, `destroy` will be called on its
+associated objects.
+* `:delete`, when the object is destroyed, all its associated objects will be
+deleted directly from the database without calling their `destroy` method.
 
 WARNING: You should not specify this option on a `belongs_to` association that is connected with a `has_many` association on the other class. Doing so can lead to orphaned records in your database.
 

@@ -90,6 +90,7 @@ module ActionView
     eager_autoload do
       autoload :Error
       autoload :Handlers
+      autoload :HTML
       autoload :Text
       autoload :Types
     end
@@ -142,7 +143,7 @@ module ActionView
         compile!(view)
         view.send(method_name, locals, buffer, &block)
       end
-    rescue Exception => e
+    rescue => e
       handle_render_error(view, e)
     end
 
@@ -294,7 +295,7 @@ module ActionView
         begin
           mod.module_eval(source, identifier, 0)
           ObjectSpace.define_finalizer(self, Finalizer[method_name, mod])
-        rescue Exception => e # errors from template code
+        rescue => e # errors from template code
           if logger = (view && view.logger)
             logger.debug "ERROR: compiling #{method_name} RAISED #{e}"
             logger.debug "Function body: #{source}"

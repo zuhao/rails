@@ -28,6 +28,13 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_equal companies(:first_firm).name, firm.name
   end
 
+  def test_belongs_to_does_not_use_order_by
+    ActiveRecord::SQLCounter.clear_log
+    Client.find(3).firm
+  ensure
+    assert ActiveRecord::SQLCounter.log_all.all? { |sql| /order by/i !~ sql }, 'ORDER BY was used in the query'
+  end
+
   def test_belongs_to_with_primary_key
     client = Client.create(:name => "Primary key client", :firm_name => companies(:first_firm).name)
     assert_equal companies(:first_firm).name, client.firm_with_primary_key.name
@@ -356,6 +363,14 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_queries(2) { line_item.destroy }
   end
 
+  def test_belongs_to_with_touch_option_on_destroy_with_destroyed_parent
+    line_item = LineItem.create!
+    invoice   = Invoice.create!(line_items: [line_item])
+    invoice.destroy
+
+    assert_queries(1) { line_item.destroy }
+  end
+
   def test_belongs_to_with_touch_option_on_touch_and_reassigned_parent
     line_item = LineItem.create!
     Invoice.create!(line_items: [line_item])
@@ -578,6 +593,19 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_nil essay.writer_id
   end
 
+  def test_polymorphic_assignment_with_nil
+    essay = Essay.new
+    assert_nil essay.writer_id
+    assert_nil essay.writer_type
+
+    essay.writer_id = 1
+    essay.writer_type = 'Author'
+
+    essay.writer = nil
+    assert_nil essay.writer_id
+    assert_nil essay.writer_type
+  end
+
   def test_belongs_to_proxy_should_not_respond_to_private_methods
     assert_raise(NoMethodError) { companies(:first_firm).private_method }
     assert_raise(NoMethodError) { companies(:second_client).firm.private_method }
@@ -619,16 +647,11 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_equal [author_address.id], AuthorAddress.destroyed_author_address_ids
   end
 
-  def test_invalid_belongs_to_dependent_option_nullify_raises_exception
-    assert_raise ArgumentError do
+  def test_belongs_to_invalid_dependent_option_raises_exception
+    error = assert_raise ArgumentError do
       Class.new(Author).belongs_to :special_author_address, :dependent => :nullify
     end
-  end
-
-  def test_invalid_belongs_to_dependent_option_restrict_raises_exception
-    assert_raise ArgumentError do
-      Class.new(Author).belongs_to :special_author_address, :dependent => :restrict
-    end
+    assert_equal error.message, 'The :dependent option must be one of [:destroy, :delete], but is :nullify'
   end
 
   def test_attributes_are_being_set_when_initialized_from_belongs_to_association_with_where_clause
@@ -829,5 +852,15 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
 
     assert post.save
     assert_equal post.author_id, author2.id
+  end
+
+  test 'dangerous association name raises ArgumentError' do
+    [:errors, 'errors', :save, 'save'].each do |name|
+      assert_raises(ArgumentError, "Association #{name} should not be allowed") do
+        Class.new(ActiveRecord::Base) do
+          belongs_to name
+        end
+      end
+    end
   end
 end

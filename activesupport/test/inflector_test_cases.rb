@@ -63,6 +63,7 @@ module InflectorTestCases
     "news"        => "news",
 
     "series"      => "series",
+    "miniseries"  => "miniseries",
     "species"     => "species",
 
     "quiz"        => "quizzes",
@@ -210,6 +211,12 @@ module InflectorTestCases
     "employee_salary" => "Employee salary",
     "employee_id"     => "Employee",
     "underground"     => "Underground"
+  }
+
+  UnderscoreToHumanWithoutCapitalize = {
+    "employee_salary" => "employee salary",
+    "employee_id"     => "employee",
+    "underground"     => "underground"
   }
 
   MixtureToTitleCase = {

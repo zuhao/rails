@@ -55,7 +55,7 @@ can expect it to be marked "invalid" as soon as it's reviewed.
 
 Sometimes, the line between 'bug' and 'feature' is a hard one to draw.
 Generally, a feature is anything that adds new behavior, while a bug is
-anything that fixes already existing behavior that is mis-behaving. Sometimes,
+anything that fixes already existing behavior that is misbehaving. Sometimes,
 the core team will have to make a judgement call. That said, the distinction
 generally just affects which release your patch will get in to; we love feature
 submissions! They just won't get backported to maintenance branches.
@@ -136,7 +136,7 @@ You can invoke `test_jdbcmysql`, `test_jdbcsqlite3` or `test_jdbcpostgresql` als
 
 The test suite runs with warnings enabled. Ideally, Ruby on Rails should issue no warnings, but there may be a few, as well as some from third-party libraries. Please ignore (or fix!) them, if any, and submit patches that do not issue new warnings.
 
-As of this writing (December, 2010) they are especially noisy with Ruby 1.9. If you are sure about what you are doing and would like to have a more clear output, there's a way to override the flag:
+If you are sure about what you are doing and would like to have a more clear output, there's a way to override the flag:
 
 ```bash
 $ RUBYOPT=-W0 bundle exec rake test
@@ -201,7 +201,8 @@ If your comment simply says "+1", then odds are that other reviewers aren't goin
 Contributing to the Rails Documentation
 ---------------------------------------
 
-Ruby on Rails has two main sets of documentation: the guides help you in learning about Ruby on Rails, and the API is a reference.
+Ruby on Rails has two main sets of documentation: the guides, which help you
+learn about Ruby on Rails, and the API, which serves as a reference.
 
 You can help improve the Rails guides by making them more coherent, consistent or readable, adding missing information, correcting factual errors, fixing typos, or bringing it up to date with the latest edge Rails. To get involved in the translation of Rails guides, please see [Translating Rails Guides](https://wiki.github.com/rails/docrails/translating-rails-guides).
 
@@ -258,10 +259,10 @@ more if the source code is mounted in `/vagrant` as happens in the recommended
 workflow with the [rails-dev-box](https://github.com/rails/rails-dev-box).
 
 As a compromise, test what your code obviously affects, and if the change is
-not in railties run the whole test suite of the affected component. If all is
-green that's enough to propose your contribution. We have [Travis CI](https://travis-ci.org/rails/rails)
-as a safety net for catching unexpected breakages
-elsewhere.
+not in railties, run the whole test suite of the affected component. If all
+tests are passing, that's enough to propose your contribution. We have
+[Travis CI](https://travis-ci.org/rails/rails) as a safety net for catching
+unexpected breakages elsewhere.
 
 TIP: Changes that are cosmetic in nature and do not add anything substantial to the stability, functionality, or testability of Rails will generally not be accepted.
 
@@ -430,13 +431,18 @@ $ git push origin branch_name
 
 ### Issue a Pull Request
 
-Navigate to the Rails repository you just pushed to (e.g. https://github.com/your-user-name/rails) and press "Pull Request" in the upper right hand corner.
+Navigate to the Rails repository you just pushed to (e.g.
+https://github.com/your-user-name/rails) and click on "Pull Requests" seen in
+the right panel. On the next page, press "New pull request" in the upper right
+hand corner.
 
-Write your branch name in the branch field (this is filled with "master" by default) and press "Update Commit Range".
+Click on "Edit", if you need to change the branches being compared (it compares
+"master" by default) and press "Click to create a pull request for this
+comparison".
 
-Ensure the changesets you introduced are included in the "Commits" tab. Ensure that the "Files Changed" incorporate all of your changes.
-
-Fill in some details about your potential patch including a meaningful title. When finished, press "Send pull request". The Rails core team will be notified about your submission.
+Ensure the changesets you introduced are included. Fill in some details about
+your potential patch including a meaningful title. When finished, press "Send
+pull request". The Rails core team will be notified about your submission.
 
 ### Get some Feedback
 

@@ -19,6 +19,8 @@ class TestApp < Rails::Application
 end
 
 class TestController < ActionController::Base
+  include Rails.application.routes.url_helpers
+
   def index
     render text: 'Home'
   end
@@ -27,7 +29,10 @@ end
 require 'minitest/autorun'
 require 'rack/test'
 
-class BugTest < MiniTest::Unit::TestCase
+# Ensure backward compatibility with Minitest 4
+Minitest::Test = MiniTest::Unit::TestCase unless defined?(Minitest::Test)
+
+class BugTest < Minitest::Test
   include Rack::Test::Methods
 
   def test_returns_success

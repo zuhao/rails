@@ -42,7 +42,7 @@ class InnerJoinAssociationTest < ActiveRecord::TestCase
   end
 
   def test_join_association_conditions_support_string_and_arel_expressions
-    assert_equal 0, Author.joins(:welcome_posts_with_comment).count
+    assert_equal 0, Author.joins(:welcome_posts_with_one_comment).count
     assert_equal 1, Author.joins(:welcome_posts_with_comments).count
   end
 
@@ -70,7 +70,7 @@ class InnerJoinAssociationTest < ActiveRecord::TestCase
   end
 
   def test_find_with_implicit_inner_joins_does_not_set_associations
-    authors = Author.joins(:posts).select('authors.*')
+    authors = Author.joins(:posts).select('authors.*').to_a
     assert !authors.empty?, "expected authors to be non-empty"
     assert authors.all? { |a| !a.instance_variable_defined?(:@posts) }, "expected no authors to have the @posts association loaded"
   end

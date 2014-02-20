@@ -3,6 +3,7 @@ require 'active_support/core_ext/array/wrap'
 require 'active_support/rescuable'
 require 'action_dispatch/http/upload'
 require 'stringio'
+require 'set'
 
 module ActionController
   # Raised when a required parameter is missing.
@@ -17,7 +18,7 @@ module ActionController
 
     def initialize(param) # :nodoc:
       @param = param
-      super("param not found: #{param}")
+      super("param is missing or the value is empty: #{param}")
     end
   end
 
@@ -125,6 +126,13 @@ module ActionController
       @permitted = self.class.permit_all_parameters
     end
 
+    # Attribute that keeps track of converted arrays, if any, to avoid double
+    # looping in the common use case permit + mass-assignment. Defined in a
+    # method to instantiate it only if needed.
+    def converted_arrays
+      @converted_arrays ||= Set.new
+    end
+
     # Returns +true+ if the parameter is permitted, +false+ otherwise.
     #
     #   params = ActionController::Parameters.new
@@ -149,8 +157,10 @@ module ActionController
     #   Person.new(params) # => #<Person id: nil, name: "Francesco">
     def permit!
       each_pair do |key, value|
-        convert_hashes_to_parameters(key, value)
-        self[key].permit! if self[key].respond_to? :permit!
+        value = convert_hashes_to_parameters(key, value)
+        Array.wrap(value).each do |_|
+          _.permit! if _.respond_to? :permit!
+        end
       end
 
       @permitted = true
@@ -284,7 +294,7 @@ module ActionController
     #   params.fetch(:none, 'Francesco')    # => "Francesco"
     #   params.fetch(:none) { 'Francesco' } # => "Francesco"
     def fetch(key, *args)
-      convert_hashes_to_parameters(key, super)
+      convert_hashes_to_parameters(key, super, false)
     rescue KeyError
       raise ActionController::ParameterMissing.new(key)
     end
@@ -322,12 +332,21 @@ module ActionController
       end
 
     private
-      def convert_hashes_to_parameters(key, value)
-        if value.is_a?(Parameters) || !value.is_a?(Hash)
+      def convert_hashes_to_parameters(key, value, assign_if_converted=true)
+        converted = convert_value_to_parameters(value)
+        self[key] = converted if assign_if_converted && !converted.equal?(value)
+        converted
+      end
+
+      def convert_value_to_parameters(value)
+        if value.is_a?(Array) && !converted_arrays.member?(value)
+          converted = value.map { |_| convert_value_to_parameters(_) }
+          converted_arrays << converted
+          converted
+        elsif value.is_a?(Parameters) || !value.is_a?(Hash)
           value
         else
-          # Convert to Parameters on first access
-          self[key] = self.class.new(value)
+          self.class.new(value)
         end
       end
 

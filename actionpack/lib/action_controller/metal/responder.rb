@@ -144,7 +144,7 @@ module ActionController #:nodoc:
     undef_method(:to_json) if method_defined?(:to_json)
     undef_method(:to_yaml) if method_defined?(:to_yaml)
 
-    # Initializes a new responder an invoke the proper format. If the format is
+    # Initializes a new responder and invokes the proper format. If the format is
     # not defined, call to_format.
     #
     def self.call(*args)
@@ -270,7 +270,7 @@ module ActionController #:nodoc:
       resource.respond_to?(:errors) && !resource.errors.empty?
     end
 
-    # Check whether the neceessary Renderer is available
+    # Check whether the necessary Renderer is available
     def has_renderer?
       Renderers::RENDERERS.include?(format)
     end

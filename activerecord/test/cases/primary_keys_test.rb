@@ -180,24 +180,29 @@ class PrimaryKeysTest < ActiveRecord::TestCase
       assert !col1.equal?(col2)
     end
   end
+
+  def test_auto_detect_primary_key_from_schema
+    MixedCaseMonkey.reset_primary_key
+    assert_equal "monkeyID", MixedCaseMonkey.primary_key
+  end
 end
 
 class PrimaryKeyWithNoConnectionTest < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
 
-  def test_set_primary_key_with_no_connection
-    return skip("disconnect wipes in-memory db") if in_memory_db?
+  unless in_memory_db?
+    def test_set_primary_key_with_no_connection
+      connection = ActiveRecord::Base.remove_connection
 
-    connection = ActiveRecord::Base.remove_connection
+      model = Class.new(ActiveRecord::Base)
+      model.primary_key = 'foo'
 
-    model = Class.new(ActiveRecord::Base)
-    model.primary_key = 'foo'
+      assert_equal 'foo', model.primary_key
 
-    assert_equal 'foo', model.primary_key
+      ActiveRecord::Base.establish_connection(connection)
 
-    ActiveRecord::Base.establish_connection(connection)
-
-    assert_equal 'foo', model.primary_key
+      assert_equal 'foo', model.primary_key
+    end
   end
 end
 
@@ -212,7 +217,5 @@ if current_adapter?(:MysqlAdapter, :Mysql2Adapter)
     ensure
       con.reconnect!
     end
-
   end
 end
-

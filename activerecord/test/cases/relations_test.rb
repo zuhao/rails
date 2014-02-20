@@ -65,7 +65,7 @@ class RelationTest < ActiveRecord::TestCase
   def test_scoped
     topics = Topic.all
     assert_kind_of ActiveRecord::Relation, topics
-    assert_equal 4, topics.size
+    assert_equal 5, topics.size
   end
 
   def test_to_json
@@ -86,14 +86,14 @@ class RelationTest < ActiveRecord::TestCase
   def test_scoped_all
     topics = Topic.all.to_a
     assert_kind_of Array, topics
-    assert_no_queries { assert_equal 4, topics.size }
+    assert_no_queries { assert_equal 5, topics.size }
   end
 
   def test_loaded_all
     topics = Topic.all
 
     assert_queries(1) do
-      2.times { assert_equal 4, topics.to_a.size }
+      2.times { assert_equal 5, topics.to_a.size }
     end
 
     assert topics.loaded?
@@ -151,6 +151,14 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal relation.to_a, Comment.select('a.*').from(relation, :a).to_a
   end
 
+  def test_finding_with_subquery_without_select_does_not_change_the_select
+    relation = Topic.where(approved: true)
+    assert_raises(ActiveRecord::StatementInvalid) do
+      Topic.from(relation).to_a
+    end
+  end
+
+
   def test_finding_with_conditions
     assert_equal ["David"], Author.where(:name => 'David').map(&:name)
     assert_equal ['Mary'],  Author.where(["name = ?", 'Mary']).map(&:name)
@@ -159,27 +167,27 @@ class RelationTest < ActiveRecord::TestCase
 
   def test_finding_with_order
     topics = Topic.order('id')
-    assert_equal 4, topics.to_a.size
+    assert_equal 5, topics.to_a.size
     assert_equal topics(:first).title, topics.first.title
   end
 
 
   def test_finding_with_arel_order
     topics = Topic.order(Topic.arel_table[:id].asc)
-    assert_equal 4, topics.to_a.size
+    assert_equal 5, topics.to_a.size
     assert_equal topics(:first).title, topics.first.title
   end
 
   def test_finding_with_assoc_order
     topics = Topic.order(:id => :desc)
-    assert_equal 4, topics.to_a.size
-    assert_equal topics(:fourth).title, topics.first.title
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:fifth).title, topics.first.title
   end
 
   def test_finding_with_reverted_assoc_order
     topics = Topic.order(:id => :asc).reverse_order
-    assert_equal 4, topics.to_a.size
-    assert_equal topics(:fourth).title, topics.first.title
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:fifth).title, topics.first.title
   end
 
   def test_order_with_hash_and_symbol_generates_the_same_sql
@@ -192,19 +200,43 @@ class RelationTest < ActiveRecord::TestCase
 
   def test_finding_last_with_arel_order
     topics = Topic.order(Topic.arel_table[:id].asc)
-    assert_equal topics(:fourth).title, topics.last.title
+    assert_equal topics(:fifth).title, topics.last.title
   end
 
   def test_finding_with_order_concatenated
     topics = Topic.order('author_name').order('title')
-    assert_equal 4, topics.to_a.size
+    assert_equal 5, topics.to_a.size
     assert_equal topics(:fourth).title, topics.first.title
+  end
+
+  def test_finding_with_order_by_aliased_attributes
+    topics = Topic.order(:heading)
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:fifth).title, topics.first.title
+  end
+
+  def test_finding_with_assoc_order_by_aliased_attributes
+    topics = Topic.order(heading: :desc)
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:third).title, topics.first.title
   end
 
   def test_finding_with_reorder
     topics = Topic.order('author_name').order('title').reorder('id').to_a
     topics_titles = topics.map{ |t| t.title }
-    assert_equal ['The First Topic', 'The Second Topic of the day', 'The Third Topic of the day', 'The Fourth Topic of the day'], topics_titles
+    assert_equal ['The First Topic', 'The Second Topic of the day', 'The Third Topic of the day', 'The Fourth Topic of the day', 'The Fifth Topic of the day'], topics_titles
+  end
+
+  def test_finding_with_reorder_by_aliased_attributes
+    topics = Topic.order('author_name').reorder(:heading)
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:fifth).title, topics.first.title
+  end
+
+  def test_finding_with_assoc_reorder_by_aliased_attributes
+    topics = Topic.order('author_name').reorder(heading: :desc)
+    assert_equal 5, topics.to_a.size
+    assert_equal topics(:third).title, topics.first.title
   end
 
   def test_finding_with_order_and_take
@@ -295,7 +327,7 @@ class RelationTest < ActiveRecord::TestCase
   def test_null_relation_calculations_methods
     assert_no_queries do
       assert_equal 0, Developer.none.count
-      assert_equal 0, Developer.none.calculate(:count, nil)
+      assert_equal 0, Developer.none.calculate(:count, nil, {})
       assert_equal nil, Developer.none.calculate(:average, 'salary')
     end
   end
@@ -648,21 +680,21 @@ class RelationTest < ActiveRecord::TestCase
 
   def test_find_all_using_where_with_relation_with_bound_values
     david = authors(:david)
-    davids_posts = david.posts.to_a
+    davids_posts = david.posts.order(:id).to_a
 
     assert_queries(1) do
       relation = Post.where(id: david.posts.select(:id))
-      assert_equal davids_posts, relation.to_a
+      assert_equal davids_posts, relation.order(:id).to_a
     end
 
     assert_queries(1) do
       relation = Post.where('id in (?)', david.posts.select(:id))
-      assert_equal davids_posts, relation.to_a, 'should process Relation as bind variables'
+      assert_equal davids_posts, relation.order(:id).to_a, 'should process Relation as bind variables'
     end
 
     assert_queries(1) do
       relation = Post.where('id in (:post_ids)', post_ids: david.posts.select(:id))
-      assert_equal davids_posts, relation.to_a, 'should process Relation as named bind variables'
+      assert_equal davids_posts, relation.order(:id).to_a, 'should process Relation as named bind variables'
     end
   end
 
@@ -770,77 +802,15 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal david.salary, developer.salary
   end
 
+  def test_select_takes_an_aliased_attribute
+    first = topics(:first)
+
+    topic = Topic.where(id: first.id).select(:heading).first
+    assert_equal first.heading, topic.heading
+  end
+
   def test_select_argument_error
     assert_raises(ArgumentError) { Developer.select }
-  end
-
-  def test_relation_merging
-    devs = Developer.where("salary >= 80000").merge(Developer.limit(2)).merge(Developer.order('id ASC').where("id < 3"))
-    assert_equal [developers(:david), developers(:jamis)], devs.to_a
-
-    dev_with_count = Developer.limit(1).merge(Developer.order('id DESC')).merge(Developer.select('developers.*'))
-    assert_equal [developers(:poor_jamis)], dev_with_count.to_a
-  end
-
-  def test_relation_to_sql
-    sql = Post.connection.unprepared_statement do
-      Post.first.comments.to_sql
-    end
-    assert_no_match(/\?/, sql)
-  end
-
-  def test_relation_merging_with_arel_equalities_keeps_last_equality
-    devs = Developer.where(Developer.arel_table[:salary].eq(80000)).merge(
-      Developer.where(Developer.arel_table[:salary].eq(9000))
-    )
-    assert_equal [developers(:poor_jamis)], devs.to_a
-  end
-
-  def test_relation_merging_with_arel_equalities_keeps_last_equality_with_non_attribute_left_hand
-    salary_attr = Developer.arel_table[:salary]
-    devs = Developer.where(
-      Arel::Nodes::NamedFunction.new('abs', [salary_attr]).eq(80000)
-    ).merge(
-      Developer.where(
-        Arel::Nodes::NamedFunction.new('abs', [salary_attr]).eq(9000)
-      )
-    )
-    assert_equal [developers(:poor_jamis)], devs.to_a
-  end
-
-  def test_relation_merging_with_eager_load
-    relations = []
-    relations << Post.order('comments.id DESC').merge(Post.eager_load(:last_comment)).merge(Post.all)
-    relations << Post.eager_load(:last_comment).merge(Post.order('comments.id DESC')).merge(Post.all)
-
-    relations.each do |posts|
-      post = posts.find { |p| p.id == 1 }
-      assert_equal Post.find(1).last_comment, post.last_comment
-    end
-  end
-
-  def test_relation_merging_with_locks
-    devs = Developer.lock.where("salary >= 80000").order("id DESC").merge(Developer.limit(2))
-    assert devs.locked.present?
-  end
-
-  def test_relation_merging_with_preload
-    [Post.all.merge(Post.preload(:author)), Post.preload(:author).merge(Post.all)].each do |posts|
-      assert_queries(2) { assert posts.first.author }
-    end
-  end
-
-  def test_relation_merging_with_joins
-    comments = Comment.joins(:post).where(:body => 'Thank you for the welcome').merge(Post.where(:body => 'Such a lovely day'))
-    assert_equal 1, comments.count
-  end
-
-  def test_relation_merging_with_association
-    assert_queries(2) do  # one for loading post, and another one merged query
-      post = Post.where(:body => 'Such a lovely day').first
-      comments = Comment.where(:body => 'Thank you for the welcome').merge(post.comments)
-      assert_equal 1, comments.count
-    end
   end
 
   def test_count
@@ -1569,46 +1539,25 @@ class RelationTest < ActiveRecord::TestCase
     end
   end
 
+  test "joins with select" do
+    posts = Post.joins(:author).select("id", "authors.author_address_id").order("posts.id").limit(3)
+    assert_equal [1, 2, 4], posts.map(&:id)
+    assert_equal [1, 1, 1], posts.map(&:author_address_id)
+  end
+
   test "delegations do not leak to other classes" do
     Topic.all.by_lifo
     assert Topic.all.class.method_defined?(:by_lifo)
     assert !Post.all.respond_to?(:by_lifo)
   end
 
-  class OMGTopic < ActiveRecord::Base
-    self.table_name = 'topics'
+  def test_unscope_removes_binds
+    left  = Post.where(id: Arel::Nodes::BindParam.new('?'))
+    column = Post.columns_hash['id']
+    left.bind_values += [[column, 20]]
 
-    def self.__omg__
-      "omgtopic"
-    end
-  end
-
-  test "delegations do not clash across classes" do
-    begin
-      class ::Array
-        def __omg__
-          "array"
-        end
-      end
-
-      assert_equal "array",    Topic.all.__omg__
-      assert_equal "omgtopic", OMGTopic.all.__omg__
-    ensure
-      Array.send(:remove_method, :__omg__)
-    end
-  end
-
-  test "merge collapses wheres from the LHS only" do
-    left  = Post.where(title: "omg").where(comments_count: 1)
-    right = Post.where(title: "wtf").where(title: "bbq")
-
-    expected = [left.where_values[1]] + right.where_values
-    merged   = left.merge(right)
-
-    assert_equal expected, merged.where_values
-    assert !merged.to_sql.include?("omg")
-    assert merged.to_sql.include?("wtf")
-    assert merged.to_sql.include?("bbq")
+    relation = left.unscope(where: :id)
+    assert_equal [], relation.bind_values
   end
 
   def test_merging_removes_rhs_bind_parameters

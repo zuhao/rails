@@ -54,7 +54,7 @@ module ActiveRecord
       if block_given?
         hash_rows.each { |row| yield row }
       else
-        hash_rows.to_enum
+        hash_rows.to_enum { @rows.size }
       end
     end
 
@@ -83,9 +83,10 @@ module ActiveRecord
     end
 
     def initialize_copy(other)
-      @columns   = columns.dup
-      @rows      = rows.dup
-      @hash_rows = nil
+      @columns      = columns.dup
+      @rows         = rows.dup
+      @column_types = column_types.dup
+      @hash_rows    = nil
     end
 
     private

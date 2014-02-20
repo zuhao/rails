@@ -120,9 +120,9 @@ module ActiveRecord
       #   The name of the primary key, if one is to be added automatically.
       #   Defaults to +id+. If <tt>:id</tt> is false this option is ignored.
       #
-      #   Also note that this just sets the primary key in the table. You additionally
-      #   need to configure the primary key in the model via +self.primary_key=+.
-      #   Models do NOT auto-detect the primary key from their table definition.
+      #   Note that Active Record models will automatically detect their
+      #   primary key. This can be avoided by using +self.primary_key=+ on the model
+      #   to define the key explicitly.
       #
       # [<tt>:options</tt>]
       #   Any extra options you want appended to the table definition.
@@ -131,6 +131,9 @@ module ActiveRecord
       # [<tt>:force</tt>]
       #   Set to true to drop the table before creating it.
       #   Defaults to false.
+      # [<tt>:as</tt>]
+      #   SQL to use to generate the table. When this option is used, the block is
+      #   ignored, as are the <tt>:id</tt> and <tt>:primary_key</tt> options.
       #
       # ====== Add a backend specific option to the generated SQL (MySQL)
       #
@@ -169,19 +172,31 @@ module ActiveRecord
       #     supplier_id int
       #   )
       #
+      # ====== Create a temporary table based on a query
+      #
+      #   create_table(:long_query, temporary: true,
+      #     as: "SELECT * FROM orders INNER JOIN line_items ON order_id=orders.id")
+      #
+      # generates:
+      #
+      #   CREATE TEMPORARY TABLE long_query AS
+      #     SELECT * FROM orders INNER JOIN line_items ON order_id=orders.id
+      #
       # See also TableDefinition#column for details on how to create columns.
       def create_table(table_name, options = {})
-        td = create_table_definition table_name, options[:temporary], options[:options]
+        td = create_table_definition table_name, options[:temporary], options[:options], options[:as]
 
-        unless options[:id] == false
-          pk = options.fetch(:primary_key) {
-            Base.get_primary_key table_name.to_s.singularize
-          }
+        if !options[:as]
+          unless options[:id] == false
+            pk = options.fetch(:primary_key) {
+              Base.get_primary_key table_name.to_s.singularize
+            }
 
-          td.primary_key pk, options.fetch(:id, :primary_key), options
+            td.primary_key pk, options.fetch(:id, :primary_key), options
+          end
+
+          yield td if block_given?
         end
-
-        yield td if block_given?
 
         if options[:force] && table_exists?(table_name)
           drop_table(table_name, options)
@@ -558,8 +573,8 @@ module ActiveRecord
         # this is a naive implementation; some DBs may support this more efficiently (Postgres, for instance)
         old_index_def = indexes(table_name).detect { |i| i.name == old_name }
         return unless old_index_def
-        remove_index(table_name, :name => old_name)
-        add_index(table_name, old_index_def.columns, :name => new_name, :unique => old_index_def.unique)
+        add_index(table_name, old_index_def.columns, name: new_name, unique: old_index_def.unique)
+        remove_index(table_name, name: old_name)
       end
 
       def index_name(table_name, options) #:nodoc:
@@ -690,7 +705,7 @@ module ActiveRecord
 
           column_type_sql
         else
-          type
+          type.to_s
         end
       end
 
@@ -699,7 +714,7 @@ module ActiveRecord
       # require the order columns appear in the SELECT.
       #
       #   columns_for_distinct("posts.id", ["posts.created_at desc"])
-      def columns_for_distinct(columns, orders) # :nodoc:
+      def columns_for_distinct(columns, orders) #:nodoc:
         columns
       end
 
@@ -719,6 +734,10 @@ module ActiveRecord
       def remove_timestamps(table_name)
         remove_column table_name, :updated_at
         remove_column table_name, :created_at
+      end
+
+      def update_table_definition(table_name, base) #:nodoc:
+        Table.new(table_name, base)
       end
 
       protected
@@ -826,16 +845,12 @@ module ActiveRecord
         end
 
       private
-      def create_table_definition(name, temporary, options)
-        TableDefinition.new native_database_types, name, temporary, options
+      def create_table_definition(name, temporary, options, as = nil)
+        TableDefinition.new native_database_types, name, temporary, options, as
       end
 
       def create_alter_table(name)
         AlterTable.new create_table_definition(name, false, {})
-      end
-
-      def update_table_definition(table_name, base)
-        Table.new(table_name, base)
       end
     end
   end

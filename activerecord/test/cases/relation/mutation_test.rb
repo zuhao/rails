@@ -7,10 +7,6 @@ module ActiveRecord
       extend ActiveRecord::Delegation::DelegateCache
       inherited self
 
-      def arel_table
-        Post.arel_table
-      end
-
       def connection
         Post.connection
       end
@@ -18,13 +14,17 @@ module ActiveRecord
       def relation_delegate_class(klass)
         self.class.relation_delegate_class(klass)
       end
+
+      def attribute_alias?(name)
+        false
+      end
     end
 
     def relation
-      @relation ||= Relation.new FakeKlass.new('posts'), :b
+      @relation ||= Relation.new FakeKlass.new('posts'), Post.arel_table
     end
 
-    (Relation::MULTI_VALUE_METHODS - [:references, :extending, :order]).each do |method|
+    (Relation::MULTI_VALUE_METHODS - [:references, :extending, :order, :unscope]).each do |method|
       test "##{method}!" do
         assert relation.public_send("#{method}!", :foo).equal?(relation)
         assert_equal [:foo], relation.public_send("#{method}_values")

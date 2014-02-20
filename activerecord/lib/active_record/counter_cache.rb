@@ -35,7 +35,7 @@ module ActiveRecord
 
           stmt = unscoped.where(arel_table[primary_key].eq(object.id)).arel.compile_update({
             arel_table[counter_name] => object.send(association).count
-          })
+          }, primary_key)
           connection.update stmt
         end
         return true
@@ -77,15 +77,15 @@ module ActiveRecord
           "#{quoted_column} = COALESCE(#{quoted_column}, 0) #{operator} #{value.abs}"
         end
 
-        where(primary_key => id).update_all updates.join(', ')
+        unscoped.where(primary_key => id).update_all updates.join(', ')
       end
 
       # Increment a numeric field by one, via a direct SQL update.
       #
-      # This method is used primarily for maintaining counter_cache columns used to
-      # store aggregate values. For example, a DiscussionBoard may cache posts_count
-      # and comments_count to avoid running an SQL query to calculate the number of
-      # posts and comments there are each time it is displayed.
+      # This method is used primarily for maintaining counter_cache columns that are
+      # used to store aggregate values. For example, a DiscussionBoard may cache
+      # posts_count and comments_count to avoid running an SQL query to calculate the
+      # number of posts and comments there are, each time it is displayed.
       #
       # ==== Parameters
       #

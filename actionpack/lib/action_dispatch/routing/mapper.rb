@@ -3,6 +3,7 @@ require 'active_support/core_ext/hash/reverse_merge'
 require 'active_support/core_ext/hash/slice'
 require 'active_support/core_ext/enumerable'
 require 'active_support/core_ext/array/extract_options'
+require 'active_support/core_ext/module/remove_method'
 require 'active_support/inflector'
 require 'action_dispatch/routing/redirection'
 
@@ -147,14 +148,16 @@ module ActionDispatch
             @defaults.merge!(options[:defaults]) if options[:defaults]
 
             options.each do |key, default|
-              next if Regexp === default || IGNORE_OPTIONS.include?(key)
-              @defaults[key] = default
+              unless Regexp === default || IGNORE_OPTIONS.include?(key)
+                @defaults[key] = default
+              end
             end
 
             if options[:constraints].is_a?(Hash)
               options[:constraints].each do |key, default|
-                next unless URL_OPTIONS.include?(key) && (String === default || Fixnum === default)
-                @defaults[key] ||= default
+                if URL_OPTIONS.include?(key) && (String === default || Fixnum === default)
+                  @defaults[key] ||= default
+                end
               end
             end
 
@@ -166,19 +169,21 @@ module ActionDispatch
           end
 
           def normalize_conditions!
-            @conditions.merge!(:path_info => path)
+            @conditions[:path_info] = path
 
             constraints.each do |key, condition|
-              next if segment_keys.include?(key) || key == :controller
-              @conditions[key] = condition
+              unless segment_keys.include?(key) || key == :controller
+                @conditions[key] = condition
+              end
             end
 
-            @conditions[:required_defaults] = []
+            required_defaults = []
             options.each do |key, required_default|
-              next if segment_keys.include?(key) || IGNORE_OPTIONS.include?(key)
-              next if Regexp === required_default
-              @conditions[:required_defaults] << key
+              unless segment_keys.include?(key) || IGNORE_OPTIONS.include?(key) || Regexp === required_default
+                required_defaults << key
+              end
             end
+            @conditions[:required_defaults] = required_defaults
 
             via_all = options.delete(:via) if options[:via] == :all
 
@@ -192,8 +197,7 @@ module ActionDispatch
             end
 
             if via = options[:via]
-              list = Array(via).map { |m| m.to_s.dasherize.upcase }
-              @conditions.merge!(:request_method => list)
+              @conditions[:request_method] = Array(via).map { |m| m.to_s.dasherize.upcase }
             end
           end
 
@@ -214,8 +218,12 @@ module ActionDispatch
               controller ||= default_controller
               action     ||= default_action
 
-              unless controller.is_a?(Regexp)
-                controller = [@scope[:module], controller].compact.join("/").presence
+              if @scope[:module] && !controller.is_a?(Regexp)
+                if controller =~ %r{\A/}
+                  controller = controller[1..-1]
+                else
+                  controller = [@scope[:module], controller].compact.join("/").presence
+                end
               end
 
               if controller.is_a?(String) && controller =~ %r{\A/}
@@ -226,11 +234,13 @@ module ActionDispatch
               action     = action.to_s     unless action.is_a?(Regexp)
 
               if controller.blank? && segment_keys.exclude?(:controller)
-                raise ArgumentError, "missing :controller"
+                message = "Missing :controller key on routes definition, please check your routes."
+                raise ArgumentError, message
               end
 
               if action.blank? && segment_keys.exclude?(:action)
-                raise ArgumentError, "missing :action"
+                message = "Missing :action key on routes definition, please check your routes."
+                raise ArgumentError, message
               end
 
               if controller.is_a?(String) && controller !~ /\A[a-z_0-9\/]*\z/
@@ -384,7 +394,7 @@ module ActionDispatch
         #   The namespace for :controller.
         #
         #     match 'path', to: 'c#a', module: 'sekret', controller: 'posts'
-        #     #=> Sekret::PostsController
+        #     # => Sekret::PostsController
         #
         #   See <tt>Scoping#namespace</tt> for its scope equivalent.
         #
@@ -497,11 +507,12 @@ module ActionDispatch
           raise "A rack application must be specified" unless path
 
           options[:as]  ||= app_name(app)
+          target_as       = name_for_action(options[:as], path)
           options[:via] ||= :all
 
           match(path, options.merge(:to => app, :anchor => false, :format => false))
 
-          define_generate_prefix(app, options[:as])
+          define_generate_prefix(app, target_as)
           self
         end
 
@@ -540,11 +551,11 @@ module ActionDispatch
             _routes = @set
             app.routes.define_mounted_helper(name)
             app.routes.singleton_class.class_eval do
-              define_method :mounted? do
+              redefine_method :mounted? do
                 true
               end
 
-              define_method :_generate_prefix do |options|
+              redefine_method :_generate_prefix do |options|
                 prefix_options = options.slice(*_route.segment_keys)
                 # we must actually delete prefix segment keys to avoid passing them to next url_for
                 _route.segment_keys.each { |k| options.delete(k) }
@@ -695,6 +706,10 @@ module ActionDispatch
 
           options[:path] = args.flatten.join('/') if args.any?
           options[:constraints] ||= {}
+
+          unless shallow?
+            options[:shallow_path] = options[:path] if args.any?
+          end
 
           if options[:constraints].is_a?(Hash)
             defaults = options[:constraints].select do
@@ -1358,7 +1373,7 @@ module ActionDispatch
         end
 
         def shallow
-          scope(:shallow => true, :shallow_path => @scope[:path]) do
+          scope(:shallow => true) do
             yield
           end
         end
@@ -1399,6 +1414,7 @@ module ActionDispatch
             path_without_format = _path.to_s.sub(/\(\.:format\)$/, '')
             if using_match_shorthand?(path_without_format, route_options)
               route_options[:to] ||= path_without_format.gsub(%r{^/}, "").sub(%r{/([^/]*)$}, '#\1')
+              route_options[:to].tr!("-", "_")
             end
 
             decomposed_match(_path, route_options)
@@ -1429,8 +1445,8 @@ module ActionDispatch
           path = path_for_action(action, options.delete(:path))
           action = action.to_s.dup
 
-          if action =~ /^[\w\/]+$/
-            options[:action] ||= action unless action.include?("/")
+          if action =~ /^[\w\-\/]+$/
+            options[:action] ||= action.tr('-', '_') unless action.include?("/")
           else
             action = nil
           end
@@ -1475,6 +1491,13 @@ module ActionDispatch
           def apply_common_behavior_for(method, resources, options, &block) #:nodoc:
             if resources.length > 1
               resources.each { |r| send(method, r, options, &block) }
+              return true
+            end
+
+            if options.delete(:shallow)
+              shallow do
+                send(method, resources.pop, options, &block)
+              end
               return true
             end
 
@@ -1595,10 +1618,11 @@ module ActionDispatch
 
           def prefix_name_for_action(as, action) #:nodoc:
             if as
-              as.to_s
+              prefix = as
             elsif !canonical_action?(action, @scope[:scope_level])
-              action.to_s
+              prefix = action
             end
+            prefix.to_s.tr('-', '_') if prefix
           end
 
           def name_for_action(as, action) #:nodoc:

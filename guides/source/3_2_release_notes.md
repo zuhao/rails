@@ -238,7 +238,7 @@ Action Pack
     end
     ```
 
-    In the example above, Posts controller will no longer automatically look up for a posts layout. If you need this functionality you could either remove `layout "application"` from `ApplicationController` or explicitly set it to `nil` in `PostsController`.
+    In the example above, `PostsController` will no longer automatically look up for a posts layout. If you need this functionality you could either remove `layout "application"` from `ApplicationController` or explicitly set it to `nil` in `PostsController`.
 
 * Deprecated `ActionController::UnknownAction` in favor of `AbstractController::ActionNotFound`.
 
@@ -375,7 +375,7 @@ Active Record
 
 * Support index sort order in SQLite, MySQL and PostgreSQL adapters.
 
-* Allow the `:class_name` option for associations to take a symbol in addition to a string. This is to avoid confusing newbies, and to be consistent with the fact that other options like :foreign_key already allow a symbol or a string.
+* Allow the `:class_name` option for associations to take a symbol in addition to a string. This is to avoid confusing newbies, and to be consistent with the fact that other options like `:foreign_key` already allow a symbol or a string.
 
     ```ruby
     has_many :clients, :class_name => :Client # Note that the symbol need to be capitalized

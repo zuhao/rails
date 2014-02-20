@@ -24,11 +24,30 @@ module ActiveRecord
       }
     end
 
+    def test_rewhere_on_root
+      assert_equal posts(:welcome), Post.rewhere(title: 'Welcome to the weblog').first
+    end
+
     def test_belongs_to_shallow_where
       author = Author.new
       author.id = 1
 
       assert_equal Post.where(author_id: 1).to_sql, Post.where(author: author).to_sql
+    end
+
+    def test_belongs_to_nil_where
+      assert_equal Post.where(author_id: nil).to_sql, Post.where(author: nil).to_sql
+    end
+
+    def test_belongs_to_array_value_where
+      assert_equal Post.where(author_id: [1,2]).to_sql, Post.where(author: [1,2]).to_sql
+    end
+
+    def test_belongs_to_nested_relation_where
+      expected = Post.where(author_id: Author.where(id: [1,2])).to_sql
+      actual   = Post.where(author:    Author.where(id: [1,2])).to_sql
+
+      assert_equal expected, actual
     end
 
     def test_belongs_to_nested_where
@@ -47,6 +66,25 @@ module ActiveRecord
 
       expected = PriceEstimate.where(estimate_of_type: 'Treasure', estimate_of_id: 1)
       actual   = PriceEstimate.where(estimate_of: treasure)
+
+      assert_equal expected.to_sql, actual.to_sql
+    end
+
+    def test_polymorphic_nested_array_where
+      treasure = Treasure.new
+      treasure.id = 1
+      hidden = HiddenTreasure.new
+      hidden.id = 2
+
+      expected = PriceEstimate.where(estimate_of_type: 'Treasure', estimate_of_id: [treasure, hidden])
+      actual   = PriceEstimate.where(estimate_of: [treasure, hidden])
+
+      assert_equal expected.to_sql, actual.to_sql
+    end
+
+    def test_polymorphic_nested_relation_where
+      expected = PriceEstimate.where(estimate_of_type: 'Treasure', estimate_of_id: Treasure.where(id: [1,2]))
+      actual   = PriceEstimate.where(estimate_of: Treasure.where(id: [1,2]))
 
       assert_equal expected.to_sql, actual.to_sql
     end

@@ -37,6 +37,8 @@ module ActiveRecord
       def not(opts, *rest)
         where_value = @scope.send(:build_where, opts, rest).map do |rel|
           case rel
+          when NilClass
+            raise ArgumentError, 'Invalid argument for .where.not(), got nil.'
           when Arel::Nodes::In
             Arel::Nodes::NotIn.new(rel.left, rel.right)
           when Arel::Nodes::Equality
@@ -118,6 +120,9 @@ module ActiveRecord
     # Will throw an error, but this will work:
     #
     #   User.includes(:posts).where('posts.name = ?', 'example').references(:posts)
+    #
+    # Note that +includes+ works with association names while +references+ needs
+    # the actual table name.
     def includes(*args)
       check_if_method_has_arguments!(:includes, args)
       spawn.includes!(*args)
@@ -161,24 +166,26 @@ module ActiveRecord
       self
     end
 
-    # Used to indicate that an association is referenced by an SQL string, and should
-    # therefore be JOINed in any query rather than loaded separately.
+    # Use to indicate that the given +table_names+ are referenced by an SQL string,
+    # and should therefore be JOINed in any query rather than loaded separately.
+    # This method only works in conjuction with +includes+.
+    # See #includes for more details.
     #
     #   User.includes(:posts).where("posts.name = 'foo'")
     #   # => Doesn't JOIN the posts table, resulting in an error.
     #
     #   User.includes(:posts).where("posts.name = 'foo'").references(:posts)
     #   # => Query now knows the string references posts, so adds a JOIN
-    def references(*args)
-      check_if_method_has_arguments!(:references, args)
-      spawn.references!(*args)
+    def references(*table_names)
+      check_if_method_has_arguments!(:references, table_names)
+      spawn.references!(*table_names)
     end
 
-    def references!(*args) # :nodoc:
-      args.flatten!
-      args.map!(&:to_s)
+    def references!(*table_names) # :nodoc:
+      table_names.flatten!
+      table_names.map!(&:to_s)
 
-      self.references_values |= args
+      self.references_values |= table_names
       self
     end
 
@@ -232,7 +239,9 @@ module ActiveRecord
 
     def select!(*fields) # :nodoc:
       fields.flatten!
-
+      fields.map! do |field|
+        klass.attribute_alias?(field) ? klass.attribute_alias(field) : field
+      end
       self.select_values += fields
       self
     end
@@ -341,16 +350,19 @@ module ActiveRecord
     #   User.where(name: "John", active: true).unscope(where: :name)
     #       == User.where(active: true)
     #
-    # This method is applied before the default_scope is applied. So the conditions
-    # specified in default_scope will not be removed.
+    # This method is similar to <tt>except</tt>, but unlike
+    # <tt>except</tt>, it persists across merges:
     #
-    # Note that this method is more generalized than ActiveRecord::SpawnMethods#except
-    # because #except will only affect a particular relation's values. It won't wipe
-    # the order, grouping, etc. when that relation is merged. For example:
+    #   User.order('email').merge(User.except(:order))
+    #       == User.order('email')
     #
-    #   Post.comments.except(:order)
+    #   User.order('email').merge(User.unscope(:order))
+    #       == User.all
     #
-    # will still have an order if it comes from the default_scope on Comment.
+    # This means it can be used in association definitions:
+    #
+    #   has_many :comments, -> { unscope where: :trashed }
+    #
     def unscope(*args)
       check_if_method_has_arguments!(:unscope, args)
       spawn.unscope!(*args)
@@ -358,6 +370,7 @@ module ActiveRecord
 
     def unscope!(*args) # :nodoc:
       args.flatten!
+      self.unscope_values += args
 
       args.each do |scope|
         case scope
@@ -423,7 +436,7 @@ module ActiveRecord
     # === string
     #
     # A single string, without additional arguments, is passed to the query
-    # constructor as a SQL fragment, and used in the where clause of the query.
+    # constructor as an SQL fragment, and used in the where clause of the query.
     #
     #    Client.where("orders_count = '2'")
     #    # SELECT * from clients where orders_count = '2';
@@ -553,6 +566,18 @@ module ActiveRecord
       end
     end
 
+    # Allows you to change a previously set where condition for a given attribute, instead of appending to that condition.
+    #
+    #   Post.where(trashed: true).where(trashed: false)                       # => WHERE `trashed` = 1 AND `trashed` = 0
+    #   Post.where(trashed: true).rewhere(trashed: false)                     # => WHERE `trashed` = 0
+    #   Post.where(active: true).where(trashed: true).rewhere(trashed: false) # => WHERE `active` = 1 AND `trashed` = 0
+    #
+    # This is short-hand for unscope(where: conditions.keys).where(conditions). Note that unlike reorder, we're only unscoping
+    # the named conditions -- not the entire where statement.
+    def rewhere(conditions)
+      unscope(where: conditions.keys).where(conditions)
+    end
+
     # Allows to specify a HAVING clause. Note that you can't use HAVING
     # without also specifying a GROUP clause.
     #
@@ -615,12 +640,11 @@ module ActiveRecord
       self
     end
 
-    # Returns a chainable relation with zero records, specifically an
-    # instance of the <tt>ActiveRecord::NullRelation</tt> class.
+    # Returns a chainable relation with zero records.
     #
-    # The returned <tt>ActiveRecord::NullRelation</tt> inherits from Relation and implements the
-    # Null Object pattern. It is an object with defined null behavior and always returns an empty
-    # array of records without querying the database.
+    # The returned relation implements the Null Object pattern. It is an
+    # object with defined null behavior and always returns an empty array of
+    # records without querying the database.
     #
     # Any subsequent condition chained to the returned relation will continue
     # generating an empty relation and will not fire any query to the database.
@@ -640,7 +664,7 @@ module ActiveRecord
     #     when 'Reviewer'
     #       Post.published
     #     when 'Bad User'
-    #       Post.none # => returning [] instead breaks the previous code
+    #       Post.none # It can't be chained if [] is returned.
     #     end
     #   end
     #
@@ -692,7 +716,7 @@ module ActiveRecord
     # Specifies table from which the records will be fetched. For example:
     #
     #   Topic.select('title').from('posts')
-    #   #=> SELECT title FROM posts
+    #   # => SELECT title FROM posts
     #
     # Can accept other relation objects. For example:
     #
@@ -800,11 +824,12 @@ module ActiveRecord
     end
 
     # Returns the Arel object associated with the relation.
-    def arel
+    def arel # :nodoc:
       @arel ||= build_arel
     end
 
-    # Like #arel, but ignores the default scope of the model.
+    private
+
     def build_arel
       arel = Arel::SelectManager.new(table.engine, table)
 
@@ -830,19 +855,17 @@ module ActiveRecord
       arel
     end
 
-    private
-
     def symbol_unscoping(scope)
       if !VALID_UNSCOPING_VALUES.include?(scope)
         raise ArgumentError, "Called unscope() with invalid unscoping argument ':#{scope}'. Valid arguments are :#{VALID_UNSCOPING_VALUES.to_a.join(", :")}."
       end
 
       single_val_method = Relation::SINGLE_VALUE_METHODS.include?(scope)
-      unscope_code = :"#{scope}_value#{'s' unless single_val_method}="
+      unscope_code = "#{scope}_value#{'s' unless single_val_method}="
 
       case scope
       when :order
-        self.send(:reverse_order_value=, false)
+        self.reverse_order_value = false
         result = []
       else
         result = [] unless single_val_method
@@ -852,17 +875,17 @@ module ActiveRecord
     end
 
     def where_unscoping(target_value)
-      target_value_sym = target_value.to_sym
+      target_value = target_value.to_s
 
       where_values.reject! do |rel|
         case rel
         when Arel::Nodes::In, Arel::Nodes::NotIn, Arel::Nodes::Equality, Arel::Nodes::NotEqual
           subrelation = (rel.left.kind_of?(Arel::Attributes::Attribute) ? rel.left : rel.right)
-          subrelation.name.to_sym == target_value_sym
-        else
-          raise "unscope(where: #{target_value.inspect}) failed: unscoping #{rel.class} is unimplemented."
+          subrelation.name == target_value
         end
       end
+
+      bind_values.reject! { |col,_| col.name == target_value }
     end
 
     def custom_join_ast(table, joins)
@@ -967,8 +990,11 @@ module ActiveRecord
     end
 
     def build_select(arel, selects)
-      unless selects.empty?
-        arel.project(*selects)
+      if !selects.empty?
+        expanded_select = selects.map do |field|
+          columns_hash.key?(field.to_s) ? arel_table[field] : field
+        end
+        arel.project(*expanded_select)
       else
         arel.project(@klass.arel_table[Arel.star])
       end
@@ -986,12 +1012,6 @@ module ActiveRecord
             s.strip!
             s.gsub!(/\sasc\Z/i, ' DESC') || s.gsub!(/\sdesc\Z/i, ' ASC') || s.concat(' DESC')
           end
-        when Symbol
-          { o => :desc }
-        when Hash
-          o.each_with_object({}) do |(field, dir), memo|
-            memo[field] = (dir == :asc ? :desc : :asc )
-          end
         else
           o
         end
@@ -1006,17 +1026,6 @@ module ActiveRecord
       orders = order_values.uniq
       orders.reject!(&:blank?)
       orders = reverse_sql_order(orders) if reverse_order_value
-
-      orders = orders.flat_map do |order|
-        case order
-        when Symbol
-          table[order].asc
-        when Hash
-          order.map { |field, dir| table[field].send(dir) }
-        else
-          order
-        end
-      end
 
       arel.order(*orders) unless orders.empty?
     end
@@ -1039,8 +1048,19 @@ module ActiveRecord
 
       # if a symbol is given we prepend the quoted table name
       order_args.map! do |arg|
-        arg.is_a?(Symbol) ? Arel::Nodes::Ascending.new(klass.arel_table[arg]) : arg
-      end
+        case arg
+        when Symbol
+          arg = klass.attribute_alias(arg) if klass.attribute_alias?(arg)
+          table[arg].asc
+        when Hash
+          arg.map { |field, dir|
+            field = klass.attribute_alias(field) if klass.attribute_alias?(field)
+            table[field].send(dir)
+          }
+        else
+          arg
+        end
+      end.flatten!
     end
 
     # Checks to make sure that the arguments are not blank. Note that if some

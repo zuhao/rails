@@ -2,7 +2,6 @@ require 'rails/railtie'
 require 'rails/engine/railties'
 require 'active_support/core_ext/module/delegation'
 require 'pathname'
-require 'rbconfig'
 
 module Rails
   # <tt>Rails::Engine</tt> allows you to wrap a specific Rails application or subset of
@@ -260,7 +259,7 @@ module Rails
   #
   #   class FooController < ApplicationController
   #     def index
-  #       my_engine.root_url #=> /my_engine/
+  #       my_engine.root_url # => /my_engine/
   #     end
   #   end
   #
@@ -269,7 +268,7 @@ module Rails
   #   module MyEngine
   #     class BarController
   #       def index
-  #         main_app.foo_path #=> /foo
+  #         main_app.foo_path # => /foo
   #       end
   #     end
   #   end
@@ -465,7 +464,7 @@ module Rails
     # files inside eager_load paths.
     def eager_load!
       config.eager_load_paths.each do |load_path|
-        matcher = /\A#{Regexp.escape(load_path)}\/(.*)\.rb\Z/
+        matcher = /\A#{Regexp.escape(load_path.to_s)}\/(.*)\.rb\Z/
         Dir.glob("#{load_path}/**/*.rb").sort.each do |file|
           require_dependency file.sub(matcher, '\1')
         end
@@ -611,7 +610,7 @@ module Rails
 
     initializer :load_config_initializers do
       config.paths["config/initializers"].existent.sort.each do |initializer|
-        load(initializer)
+        load_config_initializer(initializer)
       end
     end
 
@@ -644,6 +643,12 @@ module Rails
     end
 
     protected
+
+    def load_config_initializer(initializer)
+      ActiveSupport::Notifications.instrument('load_config_initializer.railties', initializer: initializer) do
+        load(initializer)
+      end
+    end
 
     def run_tasks_blocks(*) #:nodoc:
       super

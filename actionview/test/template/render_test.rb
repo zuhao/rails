@@ -22,7 +22,7 @@ module RenderTestCases
 
   def test_render_without_options
     e = assert_raises(ArgumentError) { @view.render() }
-    assert_match "You invoked render but did not give any of :partial, :template, :inline, :file or :text option.", e.message
+    assert_match(/You invoked render but did not give any of (.+) option./, e.message)
   end
 
   def test_render_file
@@ -63,7 +63,7 @@ module RenderTestCases
 
   def test_render_template_with_a_missing_partial_of_another_format
     @view.lookup_context.formats = [:html]
-    assert_raise ActionView::Template::Error, "Missing partial /missing with {:locale=>[:en], :formats=>[:json], :handlers=>[:erb, :builder]}" do
+    assert_raise ActionView::Template::Error, "Missing partial /_missing with {:locale=>[:en], :formats=>[:json], :handlers=>[:erb, :builder]}" do
       @view.render(:template => "with_format", :formats => [:json])
     end
   end
@@ -304,6 +304,16 @@ module RenderTestCases
     assert_equal "Hola: david", @controller_view.render('customer_greeting', :greeting => 'Hola', :customer_greeting => Customer.new("david"))
   end
 
+  def test_render_partial_with_object_uses_render_partial_path
+    assert_equal "Hello: lifo",
+      @controller_view.render(:partial => Customer.new("lifo"), :locals => {:greeting => "Hello"})
+  end
+
+  def test_render_partial_with_object_and_format_uses_render_partial_path
+    assert_equal "<greeting>Hello</greeting><name>lifo</name>",
+      @controller_view.render(:partial => Customer.new("lifo"), :formats => :xml, :locals => {:greeting => "Hello"})
+  end
+
   def test_render_partial_using_object
     assert_equal "Hello: lifo",
       @controller_view.render(Customer.new("lifo"), :greeting => "Hello")
@@ -381,7 +391,7 @@ module RenderTestCases
   def test_render_ignores_templates_with_malformed_template_handlers
     ActiveSupport::Deprecation.silence do
       %w(malformed malformed.erb malformed.html.erb malformed.en.html.erb).each do |name|
-        assert File.exists?(File.expand_path("#{FIXTURE_LOAD_PATH}/test/malformed/#{name}~")), "Malformed file (#{name}~) which should be ignored does not exists"
+        assert File.exist?(File.expand_path("#{FIXTURE_LOAD_PATH}/test/malformed/#{name}~")), "Malformed file (#{name}~) which should be ignored does not exists"
         assert_raises(ActionView::MissingTemplate) { @view.render(:file => "test/malformed/#{name}") }
       end
     end
@@ -444,7 +454,7 @@ module RenderTestCases
 
   def test_render_partial_with_layout_raises_descriptive_error
     e = assert_raises(ActionView::MissingTemplate) { @view.render(partial: 'test/partial', layout: true) }
-    assert_match "Missing partial /true with", e.message
+    assert_match "Missing partial /_true with", e.message
   end
 
   def test_render_with_nested_layout

@@ -46,8 +46,8 @@ module ActiveRecord
 
         # Executes a SELECT query and returns an array of rows. Each row is an
         # array of field values.
-        def select_rows(sql, name = nil)
-          select_raw(sql, name).last
+        def select_rows(sql, name = nil, binds = [])
+          exec_query(sql, name, binds).rows
         end
 
         # Executes an INSERT query and returns the new record's ID
@@ -142,7 +142,7 @@ module ActiveRecord
           fields.each_with_index do |fname, i|
             ftype = result.ftype i
             fmod  = result.fmod i
-            types[fname] = OID::TYPE_MAP.fetch(ftype, fmod) { |oid, mod|
+            types[fname] = type_map.fetch(ftype, fmod) { |oid, mod|
               warn "unknown OID: #{fname}(#{oid}) (#{sql})"
               OID::Identity.new
             }

@@ -4,7 +4,7 @@ module ActiveRecord
     #
     # CollectionAssociation is an abstract class that provides common stuff to
     # ease the implementation of association proxies that represent
-    # collections. See the class hierarchy in AssociationProxy.
+    # collections. See the class hierarchy in Association.
     #
     #   CollectionAssociation:
     #     HasManyAssociation => has_many
@@ -24,6 +24,10 @@ module ActiveRecord
     # If you need to work on all current children, new and existing records,
     # +load_target+ and the +loaded+ flag are your friends.
     class CollectionAssociation < Association #:nodoc:
+      def initialize(owner, reflection)
+        super
+        @proxy = CollectionProxy.create(klass, self)
+      end
 
       # Implements the reader method, e.g. foo.items for Foo.has_many :items
       def reader(force_reload = false)
@@ -33,7 +37,7 @@ module ActiveRecord
           reload
         end
 
-        @proxy ||= CollectionProxy.create(klass, self)
+        @proxy
       end
 
       # Implements the writer method, e.g. foo.items= for Foo.has_many :items
@@ -66,11 +70,11 @@ module ActiveRecord
         @target = []
       end
 
-      def select(select = nil)
+      def select(*fields)
         if block_given?
           load_target.select.each { |e| yield e }
         else
-          scope.select(select)
+          scope.select(*fields)
         end
       end
 
@@ -96,11 +100,31 @@ module ActiveRecord
       end
 
       def first(*args)
-        first_or_last(:first, *args)
+        first_nth_or_last(:first, *args)
+      end
+
+      def second(*args)
+        first_nth_or_last(:second, *args)
+      end
+
+      def third(*args)
+        first_nth_or_last(:third, *args)
+      end
+
+      def fourth(*args)
+        first_nth_or_last(:fourth, *args)
+      end
+
+      def fifth(*args)
+        first_nth_or_last(:fifth, *args)
+      end
+
+      def forty_two(*args)
+        first_nth_or_last(:forty_two, *args)
       end
 
       def last(*args)
-        first_or_last(:last, *args)
+        first_nth_or_last(:last, *args)
       end
 
       def build(attributes = {}, &block)
@@ -151,7 +175,7 @@ module ActiveRecord
 
       # Removes all records from the association without calling callbacks
       # on the associated records. It honors the `:dependent` option. However
-      # if the `:dependent` value is `:destroy` then in that case the default
+      # if the `:dependent` value is `:destroy` then in that case the `:delete_all`
       # deletion strategy for the association is applied.
       #
       # You can force a particular deletion strategy by passing a parameter.
@@ -170,9 +194,7 @@ module ActiveRecord
         dependent = if dependent.present?
                       dependent
                     elsif options[:dependent] == :destroy
-                      # since delete_all should not invoke callbacks so use the default deletion strategy
-                      # for :destroy
-                      reflection.is_a?(ActiveRecord::Reflection::ThroughReflection) ? :delete_all : :nullify
+                      :delete_all
                     else
                       options[:dependent]
                     end
@@ -195,7 +217,11 @@ module ActiveRecord
 
       # Count all records using SQL.  Construct options and pass them with
       # scope to the target class's +count+.
-      def count(column_name = nil)
+      def count(column_name = nil, count_options = {})
+        # TODO: Remove count_options argument as soon we remove support to
+        # activerecord-deprecated_finders.
+        column_name, count_options = nil, column_name if column_name.is_a?(Hash)
+
         relation = scope
         if association_scope.distinct_value
           # This is needed because 'SELECT count(DISTINCT *)..' is not valid SQL.
@@ -524,7 +550,7 @@ module ActiveRecord
         #   * target already loaded
         #   * owner is new record
         #   * target contains new or changed record(s)
-        def fetch_first_or_last_using_find?(args)
+        def fetch_first_nth_or_last_using_find?(args)
           if args.first.is_a?(Hash)
             true
           else
@@ -562,10 +588,10 @@ module ActiveRecord
         end
 
         # Fetches the first/last using SQL if possible, otherwise from the target array.
-        def first_or_last(type, *args)
+        def first_nth_or_last(type, *args)
           args.shift if args.first.is_a?(Hash) && args.first.empty?
 
-          collection = fetch_first_or_last_using_find?(args) ? scope : load_target
+          collection = fetch_first_nth_or_last_using_find?(args) ? scope : load_target
           collection.send(type, *args).tap do |record|
             set_inverse_instance record if record.is_a? ActiveRecord::Base
           end

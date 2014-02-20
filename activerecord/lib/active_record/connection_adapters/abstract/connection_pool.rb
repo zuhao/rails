@@ -86,7 +86,7 @@ module ActiveRecord
           end
         end
 
-        # Return the number of threads currently waiting on this
+        # Returns the number of threads currently waiting on this
         # queue.
         def num_waiting
           synchronize do
@@ -393,7 +393,7 @@ module ActiveRecord
         synchronize do
           stale = Time.now - @dead_connection_timeout
           connections.dup.each do |conn|
-            if conn.in_use? && stale > conn.last_use && !conn.active?
+            if conn.in_use? && stale > conn.last_use && !conn.active_threadsafe?
               remove conn
             end
           end

@@ -4,7 +4,7 @@ require 'active_support/benchmarkable'
 require 'active_support/dependencies'
 require 'active_support/descendants_tracker'
 require 'active_support/time'
-require 'active_support/core_ext/class/attribute_accessors'
+require 'active_support/core_ext/module/attribute_accessors'
 require 'active_support/core_ext/class/delegating_attributes'
 require 'active_support/core_ext/array/extract_options'
 require 'active_support/core_ext/hash/deep_merge'
@@ -291,9 +291,12 @@ module ActiveRecord #:nodoc:
     extend Translation
     extend DynamicMatchers
     extend Explain
+    extend Enum
     extend Delegation::DelegateCache
 
+    include Core
     include Persistence
+    include NoTouching
     include ReadonlyAttributes
     include ModelSchema
     include Inheritance
@@ -318,7 +321,6 @@ module ActiveRecord #:nodoc:
     include Reflection
     include Serialization
     include Store
-    include Core
   end
 
   ActiveSupport.run_load_hooks(:active_record, Base)

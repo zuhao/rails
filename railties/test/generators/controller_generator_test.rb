@@ -43,6 +43,12 @@ class ControllerGeneratorTest < Rails::Generators::TestCase
     assert_file "app/assets/stylesheets/account.css"
   end
 
+  def test_does_not_invoke_assets_if_required
+    run_generator ["account", "--skip-assets"]
+    assert_no_file "app/assets/javascripts/account.js"
+    assert_no_file "app/assets/stylesheets/account.css"
+  end
+
   def test_invokes_default_test_framework
     run_generator
     assert_file "test/controllers/account_controller_test.rb"
@@ -61,7 +67,7 @@ class ControllerGeneratorTest < Rails::Generators::TestCase
 
   def test_add_routes
     run_generator
-    assert_file "config/routes.rb", /get "account\/foo"/, /get "account\/bar"/
+    assert_file "config/routes.rb", /get 'account\/foo'/, /get 'account\/bar'/
   end
 
   def test_invokes_default_template_engine_even_with_no_action
@@ -85,6 +91,6 @@ class ControllerGeneratorTest < Rails::Generators::TestCase
 
   def test_namespaced_routes_are_created_in_routes
     run_generator ["admin/dashboard", "index"]
-    assert_file "config/routes.rb", /namespace :admin do\n\s+get "dashboard\/index"\n/
+    assert_file "config/routes.rb", /namespace :admin do\n\s+get 'dashboard\/index'\n/
   end
 end

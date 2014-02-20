@@ -31,6 +31,12 @@ module ActiveRecord
       db.busy_timeout(ConnectionAdapters::SQLite3Adapter.type_cast_config_to_integer(config[:timeout])) if config[:timeout]
 
       ConnectionAdapters::SQLite3Adapter.new(db, logger, config)
+    rescue Errno::ENOENT => error
+      if error.message.include?("No such file or directory")
+        raise ActiveRecord::NoDatabaseError.new(error.message)
+      else
+        raise error
+      end
     end
   end
 
@@ -141,14 +147,16 @@ module ActiveRecord
         'SQLite'
       end
 
-      # Returns true
       def supports_ddl_transactions?
         true
       end
 
-      # Returns true if SQLite version is '3.6.8' or greater, false otherwise.
       def supports_savepoints?
-        sqlite_version >= '3.6.8'
+        true
+      end
+
+      def supports_partial_index?
+        sqlite_version >= '3.8.0'
       end
 
       # Returns true, since this connection adapter supports prepared statement
@@ -162,7 +170,6 @@ module ActiveRecord
         true
       end
 
-      # Returns true.
       def supports_primary_key? #:nodoc:
         true
       end
@@ -171,7 +178,6 @@ module ActiveRecord
         true
       end
 
-      # Returns true
       def supports_add_column?
         true
       end
@@ -191,11 +197,6 @@ module ActiveRecord
       # Clears the prepared statements cache.
       def clear_cache!
         @statements.clear
-      end
-
-      # Returns true
-      def supports_count_distinct? #:nodoc:
-        true
       end
 
       def supports_index_sort_order?
@@ -218,7 +219,6 @@ module ActiveRecord
         @connection.encoding.to_s
       end
 
-      # Returns true.
       def supports_explain?
         true
       end
@@ -291,8 +291,11 @@ module ActiveRecord
       end
 
       def exec_query(sql, name = nil, binds = [])
-        log(sql, name, binds) do
+        type_casted_binds = binds.map { |col, val|
+          [col, type_cast(val, col)]
+        }
 
+        log(sql, name, type_casted_binds) do
           # Don't cache statements if they are not prepared
           if without_prepared_statement?(binds)
             stmt    = @connection.prepare(sql)
@@ -307,9 +310,7 @@ module ActiveRecord
             stmt = cache[:stmt]
             cols = cache[:cols] ||= stmt.columns
             stmt.reset!
-            stmt.bind_params binds.map { |col, val|
-              type_cast(val, col)
-            }
+            stmt.bind_params type_casted_binds.map { |_, val| val }
           end
 
           ActiveRecord::Result.new(cols, stmt.to_a)
@@ -346,8 +347,8 @@ module ActiveRecord
       end
       alias :create :insert_sql
 
-      def select_rows(sql, name = nil)
-        exec_query(sql, name).rows
+      def select_rows(sql, name = nil, binds = [])
+        exec_query(sql, name, binds).rows
       end
 
       def begin_db_transaction #:nodoc:
@@ -400,13 +401,25 @@ module ActiveRecord
       # Returns an array of indexes for the given table.
       def indexes(table_name, name = nil) #:nodoc:
         exec_query("PRAGMA index_list(#{quote_table_name(table_name)})", 'SCHEMA').map do |row|
+          sql = <<-SQL
+            SELECT sql
+            FROM sqlite_master
+            WHERE name=#{quote(row['name'])} AND type='index'
+            UNION ALL
+            SELECT sql
+            FROM sqlite_temp_master
+            WHERE name=#{quote(row['name'])} AND type='index'
+          SQL
+          index_sql = exec_query(sql).first['sql']
+          match = /\sWHERE\s+(.+)$/i.match(index_sql)
+          where = match[1] if match
           IndexDefinition.new(
             table_name,
             row['name'],
             row['unique'] != 0,
             exec_query("PRAGMA index_info('#{row['name']}')", "SCHEMA").map { |col|
               col['name']
-            })
+            }, nil, nil, where)
         end
       end
 
@@ -595,7 +608,11 @@ module ActiveRecord
 
         def translate_exception(exception, message)
           case exception.message
-          when /column(s)? .* (is|are) not unique/
+          # SQLite 3.8.2 returns a newly formatted error message:
+          #   UNIQUE constraint failed: *table_name*.*column_name*
+          # Older versions of SQLite return:
+          #   column *column_name* is not unique
+          when /column(s)? .* (is|are) not unique/, /UNIQUE constraint failed: .*/
             RecordNotUnique.new(message, exception)
           else
             super

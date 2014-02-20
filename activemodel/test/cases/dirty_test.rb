@@ -41,6 +41,10 @@ class DirtyTest < ActiveModel::TestCase
     def save
       changes_applied
     end
+
+    def reload
+      reset_changes
+    end
   end
 
   setup do
@@ -67,10 +71,28 @@ class DirtyTest < ActiveModel::TestCase
     assert_equal [nil, "John"], @model.changes['name']
   end
 
+  test "checking if an attribute has changed to a particular value" do
+    @model.name = "Ringo"
+    assert @model.name_changed?(from: nil, to: "Ringo")
+    assert_not @model.name_changed?(from: "Pete", to: "Ringo")
+    assert @model.name_changed?(to: "Ringo")
+    assert_not @model.name_changed?(to: "Pete")
+    assert @model.name_changed?(from: nil)
+    assert_not @model.name_changed?(from: "Pete")
+  end
+
   test "changes accessible through both strings and symbols" do
     @model.name = "David"
     assert_not_nil @model.changes[:name]
     assert_not_nil @model.changes['name']
+  end
+
+  test "be consistent with symbols arguments after the changes are applied" do
+    @model.name = "David"
+    assert @model.attribute_changed?(:name)
+    @model.save
+    @model.name = 'Rafael'
+    assert @model.attribute_changed?(:name)
   end
 
   test "attribute mutation" do
@@ -138,5 +160,20 @@ class DirtyTest < ActiveModel::TestCase
   test "using attribute_will_change! with a symbol" do
     @model.size = 1
     assert @model.size_changed?
+  end
+
+  test "reload should reset all changes" do
+    @model.name = 'Dmitry'
+    @model.name_changed?
+    @model.save
+    @model.name = 'Bob'
+
+    assert_equal [nil, 'Dmitry'], @model.previous_changes['name']
+    assert_equal 'Dmitry', @model.changed_attributes['name']
+
+    @model.reload
+
+    assert_equal ActiveSupport::HashWithIndifferentAccess.new, @model.previous_changes
+    assert_equal ActiveSupport::HashWithIndifferentAccess.new, @model.changed_attributes
   end
 end

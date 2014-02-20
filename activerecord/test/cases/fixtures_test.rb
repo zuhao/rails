@@ -624,20 +624,28 @@ class FixturesBrokenRollbackTest < ActiveRecord::TestCase
 end
 
 class LoadAllFixturesTest < ActiveRecord::TestCase
-  self.fixture_path = FIXTURES_ROOT + "/all"
-  fixtures :all
-
   def test_all_there
-    assert_equal %w(admin/accounts admin/users developers people tasks), fixture_table_names.sort
+    self.class.fixture_path = FIXTURES_ROOT + "/all"
+    self.class.fixtures :all
+
+    if File.symlink? FIXTURES_ROOT + "/all/admin"
+      assert_equal %w(admin/accounts admin/users developers people tasks), fixture_table_names.sort
+    end
+  ensure
+    ActiveRecord::FixtureSet.reset_cache
   end
 end
 
 class LoadAllFixturesWithPathnameTest < ActiveRecord::TestCase
-  self.fixture_path = Pathname.new(FIXTURES_ROOT).join('all')
-  fixtures :all
-
   def test_all_there
-    assert_equal %w(admin/accounts admin/users developers people tasks), fixture_table_names.sort
+    self.class.fixture_path = Pathname.new(FIXTURES_ROOT).join('all')
+    self.class.fixtures :all
+
+    if File.symlink? FIXTURES_ROOT + "/all/admin"
+      assert_equal %w(admin/accounts admin/users developers people tasks), fixture_table_names.sort
+    end
+  ensure
+    ActiveRecord::FixtureSet.reset_cache
   end
 end
 

@@ -9,7 +9,7 @@ module ActiveModel
 
     module ClassMethods
       # Adds methods to set and authenticate against a BCrypt password.
-      # This mechanism requires you to have a password_digest attribute.
+      # This mechanism requires you to have a +password_digest+ attribute.
       #
       # Validations for presence of password on create, confirmation of password
       # (using a +password_confirmation+ attribute) are automatically added. If
@@ -46,7 +46,6 @@ module ActiveModel
         # This is to avoid ActiveModel (and by extension the entire framework)
         # being dependent on a binary library.
         begin
-          gem 'bcrypt-ruby', '~> 3.1.2'
           require 'bcrypt'
         rescue LoadError
           $stderr.puts "You don't have bcrypt-ruby installed in your application. Please add it to your Gemfile and run bundle install"
@@ -58,11 +57,15 @@ module ActiveModel
         include InstanceMethodsOnActivation
 
         if options.fetch(:validations, true)
-          validates_confirmation_of :password, if: :should_confirm_password?
-          validates_presence_of     :password, on: :create
-          validates_presence_of     :password_confirmation, if: :should_confirm_password?
+          # This ensures the model has a password by checking whether the password_digest
+          # is present, so that this works with both new and existing records. However,
+          # when there is an error, the message is added to the password attribute instead
+          # so that the error message will make sense to the end-user.
+          validate do |record|
+            record.errors.add(:password, :blank) unless record.password_digest.present?
+          end
 
-          before_create { raise "Password digest missing on new record" if password_digest.blank? }
+          validates_confirmation_of :password, if: ->{ password.present? }
         end
 
         if respond_to?(:attributes_protected_by_default)
@@ -101,7 +104,9 @@ module ActiveModel
       #   user.password = 'mUc3m00RsqyRe'
       #   user.password_digest # => "$2a$10$4LEA7r4YmNHtvlAvHhsYAeZmk/xeUVtMTYqwIvYY76EW5GUqDiP4."
       def password=(unencrypted_password)
-        unless unencrypted_password.blank?
+        if unencrypted_password.nil?
+          self.password_digest = nil
+        elsif unencrypted_password.present?
           @password = unencrypted_password
           cost = ActiveModel::SecurePassword.min_cost ? BCrypt::Engine::MIN_COST : BCrypt::Engine.cost
           self.password_digest = BCrypt::Password.create(unencrypted_password, cost: cost)
@@ -110,12 +115,6 @@ module ActiveModel
 
       def password_confirmation=(unencrypted_password)
         @password_confirmation = unencrypted_password
-      end
-
-      private
-
-      def should_confirm_password?
-        password_confirmation && password.present?
       end
     end
   end

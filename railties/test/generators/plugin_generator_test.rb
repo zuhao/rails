@@ -35,6 +35,12 @@ class PluginGeneratorTest < Rails::Generators::TestCase
 
     content = capture(:stderr){ run_generator [File.join(destination_root, "43things")] }
     assert_equal "Invalid plugin name 43things. Please give a name which does not start with numbers.\n", content
+
+    content = capture(:stderr){ run_generator [File.join(destination_root, "plugin")] }
+    assert_equal "Invalid plugin name plugin. Please give a name which does not match one of the reserved rails words.\n", content
+
+    content = capture(:stderr){ run_generator [File.join(destination_root, "Digest")] }
+    assert_equal "Invalid plugin name Digest, constant Digest is already in use. Please choose another plugin name.\n", content
   end
 
   def test_camelcase_plugin_name_underscores_filenames
@@ -56,6 +62,17 @@ class PluginGeneratorTest < Rails::Generators::TestCase
     assert_directory "test/integration/"
 
     assert_file "test/integration/navigation_test.rb", /ActionDispatch::IntegrationTest/
+  end
+
+  def test_inclusion_of_debugger
+    run_generator [destination_root, '--full']
+    if defined?(JRUBY_VERSION)
+      assert_file "Gemfile" do |content|
+        assert_no_match(/debugger/, content)
+      end
+    else
+      assert_file "Gemfile", /# gem 'debugger'/
+    end
   end
 
   def test_generating_test_files_in_full_mode_without_unit_test_files
@@ -293,7 +310,7 @@ class PluginGeneratorTest < Rails::Generators::TestCase
     assert_file "Gemfile" do |contents|
       assert_no_match('gemspec', contents)
       assert_match(/gem "rails", "~> #{Rails.version}"/, contents)
-      assert_match(/group :development do\n  gem "sqlite3"\nend/, contents)
+      assert_match_sqlite3(contents)
       assert_no_match(/# gem "jquery-rails"/, contents)
     end
   end
@@ -304,12 +321,12 @@ class PluginGeneratorTest < Rails::Generators::TestCase
     assert_file "Gemfile" do |contents|
       assert_no_match('gemspec', contents)
       assert_match(/gem "rails", "~> #{Rails.version}"/, contents)
-      assert_match(/group :development do\n  gem "sqlite3"\nend/, contents)
+      assert_match_sqlite3(contents)
     end
   end
 
   def test_creating_plugin_in_app_directory_adds_gemfile_entry
-    # simulate application existance
+    # simulate application existence
     gemfile_path = "#{Rails.root}/Gemfile"
     Object.const_set('APP_PATH', Rails.root)
     FileUtils.touch gemfile_path
@@ -323,7 +340,7 @@ class PluginGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_skipping_gemfile_entry
-    # simulate application existance
+    # simulate application existence
     gemfile_path = "#{Rails.root}/Gemfile"
     Object.const_set('APP_PATH', Rails.root)
     FileUtils.touch gemfile_path
@@ -346,5 +363,13 @@ protected
 
   def default_files
     ::DEFAULT_PLUGIN_FILES
+  end
+
+  def assert_match_sqlite3(contents)
+    unless defined?(JRUBY_VERSION)
+      assert_match(/group :development do\n  gem "sqlite3"\nend/, contents)
+    else
+      assert_match(/group :development do\n  gem "activerecord-jdbcsqlite3-adapter"\nend/, contents)
+    end
   end
 end

@@ -297,10 +297,10 @@ You can append as many column name/type pairs as you want.
 You can also specify some options just after the field type between curly
 braces. You can use the following modifiers:
 
-* `limit`        Sets the maximum size of the `string/text/binary/integer` fields
-* `precision`    Defines the precision for the `decimal` fields
-* `scale`        Defines the scale for the `decimal` fields
-* `polymorphic`  Adds a `type` column for `belongs_to` associations
+* `limit`        Sets the maximum size of the `string/text/binary/integer` fields.
+* `precision`    Defines the precision for the `decimal` fields, representing the total number of digits in the number.
+* `scale`        Defines the scale for the `decimal` fields, representing the number of digits after the decimal point.
+* `polymorphic`  Adds a `type` column for `belongs_to` associations.
 * `null`         Allows or disallows `NULL` values in the column.
 
 For instance, running:
@@ -420,7 +420,7 @@ If the helpers provided by Active Record aren't enough you can use the `execute`
 method to execute arbitrary SQL:
 
 ```ruby
-Products.connection.execute('UPDATE `products` SET `price`=`free` WHERE 1')
+Product.connection.execute('UPDATE `products` SET `price`=`free` WHERE 1')
 ```
 
 For more details and examples of individual methods, check the API documentation.
@@ -642,7 +642,7 @@ method for all the migrations that have not yet been run. If there are
 no such migrations, it exits. It will run these migrations in order based
 on the date of the migration.
 
-Note that running the `db:migrate` also invokes the `db:schema:dump` task, which
+Note that running the `db:migrate` task also invokes the `db:schema:dump` task, which
 will update your `db/schema.rb` file to match the structure of your database.
 
 If you specify a target version, Active Record will run the required migrations

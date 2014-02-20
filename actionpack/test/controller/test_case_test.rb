@@ -1,5 +1,6 @@
 require 'abstract_unit'
 require 'controller/fake_controllers'
+require 'active_support/json/decoding'
 
 class TestCaseTest < ActionController::TestCase
   class TestController < ActionController::Base
@@ -622,7 +623,7 @@ XML
     @request.headers['Referer'] = "http://nohost.com/home"
     @request.headers['Content-Type'] = "application/rss+xml"
     get :test_headers
-    parsed_env = JSON.parse(@response.body)
+    parsed_env = ActiveSupport::JSON.decode(@response.body)
     assert_equal "http://nohost.com/home", parsed_env["HTTP_REFERER"]
     assert_equal "application/rss+xml", parsed_env["CONTENT_TYPE"]
   end
@@ -631,7 +632,7 @@ XML
     @request.headers['HTTP_REFERER'] = "http://example.com/about"
     @request.headers['CONTENT_TYPE'] = "application/json"
     get :test_headers
-    parsed_env = JSON.parse(@response.body)
+    parsed_env = ActiveSupport::JSON.decode(@response.body)
     assert_equal "http://example.com/about", parsed_env["HTTP_REFERER"]
     assert_equal "application/json", parsed_env["CONTENT_TYPE"]
   end
@@ -703,6 +704,14 @@ XML
     @request.recycle!
     post :no_op
     assert @request.params[:foo].blank?
+  end
+
+  def test_filtered_parameters_reset_between_requests
+    get :no_op, :foo => "bar"
+    assert_equal "bar", @request.filtered_parameters[:foo]
+
+    get :no_op, :foo => "baz"
+    assert_equal "baz", @request.filtered_parameters[:foo]
   end
 
   def test_symbolized_path_params_reset_after_request

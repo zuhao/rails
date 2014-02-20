@@ -1,38 +1,49 @@
-require "active_support/core_ext/class/attribute_accessors"
+require "active_support/core_ext/module/attribute_accessors"
 require 'set'
 
 module ActiveRecord
-  # Exception that can be raised to stop migrations from going backwards.
-  class IrreversibleMigration < ActiveRecordError
+  class MigrationError < ActiveRecordError#:nodoc:
+    def initialize(message = nil)
+      message = "\n\n#{message}\n\n" if message
+      super
+    end
   end
 
-  class DuplicateMigrationVersionError < ActiveRecordError#:nodoc:
+  # Exception that can be raised to stop migrations from going backwards.
+  class IrreversibleMigration < MigrationError
+  end
+
+  class DuplicateMigrationVersionError < MigrationError#:nodoc:
     def initialize(version)
       super("Multiple migrations have the version number #{version}")
     end
   end
 
-  class DuplicateMigrationNameError < ActiveRecordError#:nodoc:
+  class DuplicateMigrationNameError < MigrationError#:nodoc:
     def initialize(name)
       super("Multiple migrations have the name #{name}")
     end
   end
 
-  class UnknownMigrationVersionError < ActiveRecordError #:nodoc:
+  class UnknownMigrationVersionError < MigrationError #:nodoc:
     def initialize(version)
       super("No migration with version number #{version}")
     end
   end
 
-  class IllegalMigrationNameError < ActiveRecordError#:nodoc:
+  class IllegalMigrationNameError < MigrationError#:nodoc:
     def initialize(name)
       super("Illegal name for migration file: #{name}\n\t(only lower case letters, numbers, and '_' allowed)")
     end
   end
 
-  class PendingMigrationError < ActiveRecordError#:nodoc:
+  class PendingMigrationError < MigrationError#:nodoc:
     def initialize
-      super("Migrations are pending; run 'bin/rake db:migrate RAILS_ENV=#{::Rails.env}' to resolve this issue.")
+      if defined?(Rails)
+        super("Migrations are pending. To resolve this issue, run:\n\n\tbin/rake db:migrate RAILS_ENV=#{::Rails.env}")
+      else
+        super("Migrations are pending. To resolve this issue, run:\n\n\tbin/rake db:migrate")
+      end
     end
   end
 
@@ -120,8 +131,8 @@ module ActiveRecord
   #   a column but keeps the type and content.
   # * <tt>change_column(table_name, column_name, type, options)</tt>:  Changes
   #   the column to a different type using the same parameters as add_column.
-  # * <tt>remove_column(table_name, column_names)</tt>: Removes the column listed in
-  #   +column_names+ from the table called +table_name+.
+  # * <tt>remove_column(table_name, column_name, type, options)</tt>: Removes the column
+  #   named +column_name+ from the table called +table_name+.
   # * <tt>add_index(table_name, column_names, options)</tt>: Adds a new index
   #   with the name of the column. Other options include
   #   <tt>:name</tt>, <tt>:unique</tt> (e.g.
@@ -374,8 +385,21 @@ module ActiveRecord
       attr_accessor :delegate # :nodoc:
       attr_accessor :disable_ddl_transaction # :nodoc:
 
-      def check_pending!
-        raise ActiveRecord::PendingMigrationError if ActiveRecord::Migrator.needs_migration?
+      def check_pending!(connection = Base.connection)
+        raise ActiveRecord::PendingMigrationError if ActiveRecord::Migrator.needs_migration?(connection)
+      end
+
+      def load_schema_if_pending!
+        if ActiveRecord::Migrator.needs_migration?
+          ActiveRecord::Tasks::DatabaseTasks.load_schema
+          check_pending!
+        end
+      end
+
+      def maintain_test_schema! # :nodoc:
+        if ActiveRecord::Base.maintain_test_schema
+          suppress_messages { load_schema_if_pending! }
+        end
       end
 
       def method_missing(name, *args, &block) # :nodoc:
@@ -629,7 +653,7 @@ module ActiveRecord
     def copy(destination, sources, options = {})
       copied = []
 
-      FileUtils.mkdir_p(destination) unless File.exists?(destination)
+      FileUtils.mkdir_p(destination) unless File.exist?(destination)
 
       destination_migrations = ActiveRecord::Migrator.migrations(destination)
       last = destination_migrations.last
@@ -735,7 +759,7 @@ module ActiveRecord
 
       def load_migration
         require(File.expand_path(filename))
-        name.constantize.new
+        name.constantize.new(name, version)
       end
 
   end
@@ -806,17 +830,17 @@ module ActiveRecord
         SchemaMigration.all.map { |x| x.version.to_i }.sort
       end
 
-      def current_version
+      def current_version(connection = Base.connection)
         sm_table = schema_migrations_table_name
-        if Base.connection.table_exists?(sm_table)
+        if connection.table_exists?(sm_table)
           get_all_versions.max || 0
         else
           0
         end
       end
 
-      def needs_migration?
-        current_version < last_version
+      def needs_migration?(connection = Base.connection)
+        current_version(connection) < last_version
       end
 
       def last_version
@@ -892,7 +916,7 @@ module ActiveRecord
 
       validate(@migrations)
 
-      ActiveRecord::SchemaMigration.create_table
+      Base.connection.initialize_schema_migrations_table
     end
 
     def current_version

@@ -12,12 +12,6 @@ class Ab
   Constant3 = "Goodbye World"
 end
 
-module Xy
-  class Bc
-    include One
-  end
-end
-
 module Yz
   module Zy
     class Cd
@@ -249,6 +243,16 @@ class ModuleTest < ActiveSupport::TestCase
         end
       end
     end
+  end
+
+  def test_delegation_line_number
+    _, line = Someone.instance_method(:foo).source_location
+    assert_equal Someone::FAILED_DELEGATE_LINE, line
+  end
+
+  def test_delegate_line_with_nil
+    _, line = Someone.instance_method(:bar).source_location
+    assert_equal Someone::FAILED_DELEGATE_LINE_2, line
   end
 
   def test_delegation_exception_backtrace

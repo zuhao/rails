@@ -37,8 +37,8 @@ module ActiveRecord
     end
 
     def initialize_dup(other) # :nodoc:
-      clear_timestamp_attributes
       super
+      clear_timestamp_attributes
     end
 
   private
@@ -71,7 +71,7 @@ module ActiveRecord
     end
 
     def should_record_timestamps?
-      self.record_timestamps && (!partial_writes? || changed? || (attributes.keys & self.class.serialized_attributes.keys).present?)
+      self.record_timestamps && (!partial_writes? || changed?)
     end
 
     def timestamp_attributes_for_create_in_model
@@ -98,8 +98,8 @@ module ActiveRecord
       timestamp_attributes_for_create + timestamp_attributes_for_update
     end
 
-    def max_updated_column_timestamp
-      if (timestamps = timestamp_attributes_for_update.map { |attr| self[attr] }.compact).present?
+    def max_updated_column_timestamp(timestamp_names = timestamp_attributes_for_update)
+      if (timestamps = timestamp_names.map { |attr| self[attr] }.compact).present?
         timestamps.map { |ts| ts.to_time }.max
       end
     end

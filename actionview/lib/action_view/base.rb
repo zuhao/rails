@@ -1,5 +1,5 @@
 require 'active_support/core_ext/module/attr_internal'
-require 'active_support/core_ext/class/attribute_accessors'
+require 'active_support/core_ext/module/attribute_accessors'
 require 'active_support/ordered_options'
 require 'action_view/log_subscriber'
 require 'action_view/helpers'
@@ -152,6 +152,10 @@ module ActionView #:nodoc:
 
     # Specify default_formats that can be rendered.
     cattr_accessor :default_formats
+
+    # Specify whether an error should be raised for missing translations
+    cattr_accessor :raise_on_missing_translations
+    @@raise_on_missing_translations = false
 
     class_attribute :_routes
     class_attribute :logger

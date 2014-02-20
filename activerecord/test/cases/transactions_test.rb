@@ -430,17 +430,26 @@ class TransactionTest < ActiveRecord::TestCase
   end
 
   def test_restore_active_record_state_for_all_records_in_a_transaction
+    topic_without_callbacks = Class.new(ActiveRecord::Base) do
+      self.table_name = 'topics'
+    end
+
     topic_1 = Topic.new(:title => 'test_1')
     topic_2 = Topic.new(:title => 'test_2')
+    topic_3 = topic_without_callbacks.new(:title => 'test_3')
+
     Topic.transaction do
       assert topic_1.save
       assert topic_2.save
+      assert topic_3.save
       @first.save
       @second.destroy
       assert topic_1.persisted?, 'persisted'
       assert_not_nil topic_1.id
       assert topic_2.persisted?, 'persisted'
       assert_not_nil topic_2.id
+      assert topic_3.persisted?, 'persisted'
+      assert_not_nil topic_3.id
       assert @first.persisted?, 'persisted'
       assert_not_nil @first.id
       assert @second.destroyed?, 'destroyed'
@@ -451,6 +460,8 @@ class TransactionTest < ActiveRecord::TestCase
     assert_nil topic_1.id
     assert !topic_2.persisted?, 'not persisted'
     assert_nil topic_2.id
+    assert !topic_3.persisted?, 'not persisted'
+    assert_nil topic_3.id
     assert @first.persisted?, 'persisted'
     assert_not_nil @first.id
     assert !@second.destroyed?, 'not destroyed'
@@ -484,6 +495,13 @@ class TransactionTest < ActiveRecord::TestCase
         assert_raise(ActiveRecord::StatementInvalid) { Topic.connection.add_column('topics', 'stuff', :string) }
         raise ActiveRecord::Rollback
       end
+    end
+  ensure
+    begin
+      Topic.connection.remove_column('topics', 'stuff')
+    rescue
+    ensure
+      Topic.reset_column_information
     end
   end
 
@@ -571,23 +589,23 @@ if current_adapter?(:PostgreSQLAdapter)
   class ConcurrentTransactionTest < TransactionTest
     # This will cause transactions to overlap and fail unless they are performed on
     # separate database connections.
-    def test_transaction_per_thread
-      skip "in memory db can't share a db between threads" if in_memory_db?
-
-      threads = 3.times.map do
-        Thread.new do
-          Topic.transaction do
-            topic = Topic.find(1)
-            topic.approved = !topic.approved?
-            assert topic.save!
-            topic.approved = !topic.approved?
-            assert topic.save!
+    unless in_memory_db?
+      def test_transaction_per_thread
+        threads = 3.times.map do
+          Thread.new do
+            Topic.transaction do
+              topic = Topic.find(1)
+              topic.approved = !topic.approved?
+              assert topic.save!
+              topic.approved = !topic.approved?
+              assert topic.save!
+            end
+            Topic.connection.close
           end
-          Topic.connection.close
         end
-      end
 
-      threads.each { |t| t.join }
+        threads.each { |t| t.join }
+      end
     end
 
     # Test for dirty reads among simultaneous transactions.

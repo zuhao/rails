@@ -10,9 +10,6 @@ module ActiveRecord
       # The +attributes+ parameter can be either a Hash or an Array of Hashes. These Hashes describe the
       # attributes on the objects that are to be created.
       #
-      # +create+ respects mass-assignment security and accepts either +:as+ or +:without_protection+ options
-      # in the +options+ parameter.
-      #
       # ==== Examples
       #   # Create a single new object
       #   User.create(first_name: 'Jamie')
@@ -184,6 +181,7 @@ module ActiveRecord
       became = klass.new
       became.instance_variable_set("@attributes", @attributes)
       became.instance_variable_set("@attributes_cache", @attributes_cache)
+      became.instance_variable_set("@changed_attributes", @changed_attributes) if defined?(@changed_attributes)
       became.instance_variable_set("@new_record", new_record?)
       became.instance_variable_set("@destroyed", destroyed?)
       became.instance_variable_set("@errors", errors)
@@ -198,7 +196,11 @@ module ActiveRecord
     # share the same set of attributes.
     def becomes!(klass)
       became = becomes(klass)
-      became.public_send("#{klass.inheritance_column}=", klass.sti_name) unless self.class.descends_from_active_record?
+      sti_type = nil
+      if !klass.descends_from_active_record?
+        sti_type = klass.sti_name
+      end
+      became.public_send("#{klass.inheritance_column}=", sti_type)
       became
     end
 
@@ -267,7 +269,7 @@ module ActiveRecord
     # This method raises an +ActiveRecord::ActiveRecordError+ when called on new
     # objects, or when at least one of the attributes is marked as readonly.
     def update_columns(attributes)
-      raise ActiveRecordError, "can not update on a new record object" unless persisted?
+      raise ActiveRecordError, "cannot update on a new record object" unless persisted?
 
       attributes.each_key do |key|
         verify_readonly_attribute(key.to_s)
@@ -364,7 +366,7 @@ module ActiveRecord
     #   assert_equal 25, account.credit        # check it is updated in memory
     #   assert_equal 25, account.reload.credit # check it is also persisted
     #
-    # Another commom use case is optimistic locking handling:
+    # Another common use case is optimistic locking handling:
     #
     #   def with_optimistic_retry
     #     begin
@@ -387,7 +389,7 @@ module ActiveRecord
 
       fresh_object =
         if options && options[:lock]
-          self.class.unscoped { self.class.lock.find(id) }
+          self.class.unscoped { self.class.lock(options[:lock]).find(id) }
         else
           self.class.unscoped { self.class.find(id) }
         end
@@ -429,7 +431,7 @@ module ActiveRecord
     #   ball.touch(:updated_at)   # => raises ActiveRecordError
     #
     def touch(name = nil)
-      raise ActiveRecordError, "can not touch on a new record object" unless persisted?
+      raise ActiveRecordError, "cannot touch on a new record object" unless persisted?
 
       attributes = timestamp_attributes_for_update_in_model
       attributes << name if name
